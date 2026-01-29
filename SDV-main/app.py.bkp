@@ -1,0 +1,924 @@
+import os
+import sqlite3
+import json
+from flask import Flask, render_template, request, redirect, url_for, flash, session
+from datetime import datetime, timedelta, date
+import holidays
+# Importar para el hashing de contraseñas
+from werkzeug.security import generate_password_hash, check_password_hash
+# Importar el script de sincronización
+import ad_sync
+
+# --- CORRECCIÓN: CONVERSORES DE FECHA PARA SQLITE (RECETA OFICIAL) ---
+def adapt_date_iso(val):
+    """Adapta objetos date al formato ISO 8601 YYYY-MM-DD."""
+    return val.isoformat()
+
+def convert_date(val):
+    """Convierte un string de fecha ISO 8601 a un objeto date."""
+    return date.fromisoformat(val.decode())
+
+def adapt_datetime_iso(val):
+    """Adapta objetos datetime al formato ISO 8601."""
+    return val.isoformat()
+
+def convert_timestamp(val):
+    """Convierte un string de timestamp ISO 8601 a un objeto datetime."""
+    return datetime.fromisoformat(val.decode())
+
+sqlite3.register_adapter(date, adapt_date_iso)
+sqlite3.register_converter("date", convert_date)
+sqlite3.register_adapter(datetime, adapt_datetime_iso)
+sqlite3.register_converter("timestamp", convert_timestamp)
+
+
+app = Flask(__name__)
+app.secret_key = os.urandom(24)
+
+DB_PATH = "vacaciones.db"
+AD_CONFIG_PATH = "ad_config.json"
+
+def get_db_connection():
+    # Se restaura detect_types para usar nuestros conversores personalizados
+    conn = sqlite3.connect(DB_PATH, detect_types=sqlite3.PARSE_DECLTYPES)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+# --- FILTRO DE FECHAS MEJORADO ---
+@app.template_filter('format_date')
+def format_date_filter(date_val, include_time=False):
+    if not date_val:
+        return ''
+    
+    # Gracias a los conversores, date_val debería ser un objeto date/datetime
+    if isinstance(date_val, (datetime, date)):
+        fmt = '%d/%m/%Y %H:%M' if include_time else '%d/%m/%Y'
+        return date_val.strftime(fmt)
+    
+    return date_val # Fallback por si acaso
+
+def setup_database():
+    print("Configurando la base de datos...")
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    # --- CAMBIO AQUÍ: Se añaden los campos job_title y company ---
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS employees (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT UNIQUE NOT NULL,
+        password TEXT NOT NULL,
+        full_name TEXT NOT NULL,
+        email TEXT,
+        hire_date DATE NOT NULL,
+        role TEXT NOT NULL CHECK(role IN ('Empleado', 'Jefe', 'RRHH')),
+        manager_id INTEGER,
+        department TEXT,
+        job_title TEXT,
+        company TEXT,
+        is_active BOOLEAN DEFAULT 1,
+        is_ad_managed BOOLEAN DEFAULT 0
+    );
+    """)
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS vacation_periods (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        employee_id INTEGER NOT NULL,
+        year INTEGER NOT NULL,
+        total_days_accrued REAL NOT NULL,
+        days_taken REAL DEFAULT 0.0,
+        UNIQUE(employee_id, year)
+    );
+    """)
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS vacation_requests (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        employee_id INTEGER NOT NULL,
+        period_id INTEGER NOT NULL,
+        start_date DATE NOT NULL,
+        end_date DATE NOT NULL,
+        request_type TEXT NOT NULL CHECK(request_type IN ('FullDay', 'HalfDay')),
+        days_requested REAL NOT NULL,
+        status TEXT NOT NULL DEFAULT 'Pendiente' 
+               CHECK(status IN ('Pendiente', 'Aprobado por Jefe', 'Aprobado por RRHH', 'Rechazado')),
+        request_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        manager_approval_date TIMESTAMP,
+        hr_approval_date TIMESTAMP
+    );
+    """)
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS custom_holidays (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        holiday_date DATE NOT NULL UNIQUE,
+        description TEXT NOT NULL
+    );
+    """)
+
+    cur.execute("SELECT COUNT(*) FROM employees;")
+    if cur.fetchone()[0] == 0:
+        hashed_password = generate_password_hash('123')
+        # Se añaden los nuevos campos a los datos de ejemplo
+        cur.execute("""
+        INSERT INTO employees (username, password, full_name, email, hire_date, role, manager_id, department, job_title, company, is_ad_managed) VALUES
+        ('rrhh', ?, 'Recursos Humanos', 'rrhh@empresa.com', '2015-01-15', 'RRHH', NULL, 'Recursos Humanos', 'Analista de RRHH', 'Mi Empresa', 0),
+        ('jefe_ventas', ?, 'Juan Perez (Jefe)', 'jperez@empresa.com', '2018-03-20', 'Jefe', 1, 'Ventas', 'Jefe de Ventas', 'Mi Empresa', 0),
+        ('empleado1', ?, 'Ana Lopez', 'alopez@empresa.com', '2022-06-01', 'Empleado', 2, 'Ventas', 'Vendedora', 'Mi Empresa', 0),
+        ('empleado2', ?, 'Carlos Vera', 'cvera@empresa.com', '2016-11-10', 'Empleado', 2, 'Marketing', 'Analista de Marketing', 'Mi Empresa', 0);
+        """, (hashed_password, hashed_password, hashed_password, hashed_password))
+        print("Datos de ejemplo de empleados insertados.")
+
+        # --- SECCIÓN MEJORADA: GENERAR DATOS DE EJEMPLO COMPLETOS ---
+        print("Generando periodos y solicitudes de ejemplo...")
+        current_year = datetime.now().year
+        
+        # Generar periodos para todos
+        employees_for_period = cur.execute("SELECT id, hire_date FROM employees").fetchall()
+        for emp in employees_for_period:
+            hire_date_obj = emp['hire_date']
+            accrued_days = calculate_accrued_days(hire_date_obj)
+            cur.execute(
+                "INSERT INTO vacation_periods (employee_id, year, total_days_accrued) VALUES (?, ?, ?)",
+                (emp['id'], current_year, accrued_days)
+            )
+
+        # Obtener IDs para crear solicitudes de ejemplo
+        ana_id = cur.execute("SELECT id FROM employees WHERE username = 'empleado1'").fetchone()['id']
+        carlos_id = cur.execute("SELECT id FROM employees WHERE username = 'empleado2'").fetchone()['id']
+        
+        ana_period_id = cur.execute("SELECT id FROM vacation_periods WHERE employee_id = ?", (ana_id,)).fetchone()['id']
+        carlos_period_id = cur.execute("SELECT id FROM vacation_periods WHERE employee_id = ?", (carlos_id,)).fetchone()['id']
+
+        # 1. Solicitud APROBADA para Ana (Ventas)
+        cur.execute("""
+            INSERT INTO vacation_requests (employee_id, period_id, start_date, end_date, request_type, days_requested, status, request_date, manager_approval_date, hr_approval_date)
+            VALUES (?, ?, ?, ?, 'FullDay', 5, 'Aprobado por RRHH', ?, ?, ?)
+        """, (ana_id, ana_period_id, date(current_year, 2, 10), date(current_year, 2, 14), datetime(current_year, 1, 15), datetime.now(), datetime.now()))
+        cur.execute("UPDATE vacation_periods SET days_taken = 5 WHERE id = ?", (ana_period_id,))
+
+        # 2. Solicitud PENDIENTE para Ana (Ventas)
+        cur.execute("""
+            INSERT INTO vacation_requests (employee_id, period_id, start_date, end_date, request_type, days_requested, status, request_date)
+            VALUES (?, ?, ?, ?, 'FullDay', 2, 'Pendiente', ?)
+        """, (ana_id, ana_period_id, date(current_year, 8, 1), date(current_year, 8, 2), datetime(current_year, 7, 1)))
+
+        # 3. Solicitud APROBADA para Carlos (Marketing)
+        cur.execute("""
+            INSERT INTO vacation_requests (employee_id, period_id, start_date, end_date, request_type, days_requested, status, request_date, manager_approval_date, hr_approval_date)
+            VALUES (?, ?, ?, ?, 'FullDay', 3, 'Aprobado por RRHH', ?, ?, ?)
+        """, (carlos_id, carlos_period_id, date(current_year, 3, 5), date(current_year, 3, 7), datetime(current_year, 2, 20), datetime.now(), datetime.now()))
+        cur.execute("UPDATE vacation_periods SET days_taken = 3 WHERE id = ?", (carlos_period_id,))
+        
+        print("Datos de ejemplo de solicitudes insertados.")
+
+
+    conn.commit()
+    conn.close()
+
+def get_paraguay_holidays():
+    py_holidays = holidays.Paraguay()
+    conn = get_db_connection()
+    custom_holidays_rows = conn.execute("SELECT holiday_date, description FROM custom_holidays").fetchall()
+    conn.close()
+    for row in custom_holidays_rows:
+        py_holidays[row['holiday_date']] = row['description']
+    return py_holidays
+
+def calculate_accrued_days(hire_date):
+    today = date.today()
+    seniority_years = (today - hire_date).days / 365.25
+    if seniority_years <= 5:
+        return 12
+    elif seniority_years <= 10:
+        return 18
+    else:
+        return 30
+
+def calculate_working_days(start_date, end_date):
+    py_holidays = get_paraguay_holidays()
+    days_count = 0
+    current_date = start_date
+    while current_date <= end_date:
+        if current_date.weekday() < 5 and current_date not in py_holidays:
+            days_count += 1
+        current_date += timedelta(days=1)
+    return days_count
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if request.method == "POST":
+        username = request.form["username"]
+        password = request.form["password"]
+        conn = get_db_connection()
+        user = conn.execute(
+            "SELECT id, full_name, role, password FROM employees WHERE username = ? AND is_active = 1;",
+            (username,)
+        ).fetchone()
+        conn.close()
+
+        if user and check_password_hash(user["password"], password):
+            session["user_id"] = user["id"]
+            session["full_name"] = user["full_name"]
+            session["role"] = user["role"]
+            flash(f"¡Bienvenido/a {session['full_name']}!", "success")
+            return redirect(url_for("dashboard"))
+        else:
+            flash("Usuario o contraseña incorrectos.", "danger")
+
+    return render_template("login.html")
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    flash("Has cerrado sesión.", "info")
+    return redirect(url_for("login"))
+
+@app.route("/")
+@app.route("/dashboard")
+def dashboard():
+    if "user_id" not in session:
+        return redirect(url_for("login"))
+
+    role = session.get("role", "Empleado").lower()
+    template_name = f"dashboard_{role}.html"
+    
+    user_info = {
+        "name": session.get("full_name"),
+        "role": session.get("role")
+    }
+
+    if session.get("role") in ["Empleado", "Jefe", "RRHH"]:
+        conn = get_db_connection()
+        employee_id = session["user_id"]
+        current_year = datetime.now().year
+
+        period = conn.execute(
+            "SELECT year, total_days_accrued, days_taken FROM vacation_periods WHERE employee_id = ? AND year = ?",
+            (employee_id, current_year)
+        ).fetchone()
+        
+        requests = conn.execute(
+            "SELECT * FROM vacation_requests WHERE employee_id = ? ORDER BY request_date DESC",
+            (employee_id,)
+        ).fetchall()
+        
+        pending_days_result = conn.execute(
+            "SELECT SUM(days_requested) FROM vacation_requests WHERE employee_id = ? AND (status = 'Pendiente' OR status = 'Aprobado por Jefe')",
+            (employee_id,)
+        ).fetchone()
+        pending_days = pending_days_result[0] if pending_days_result and pending_days_result[0] is not None else 0
+        
+        is_also_manager = False
+        if session.get("role") == "RRHH":
+            team_count_result = conn.execute(
+                "SELECT COUNT(id) FROM employees WHERE manager_id = ?",
+                (employee_id,)
+            ).fetchone()
+            if team_count_result and team_count_result[0] > 0:
+                is_also_manager = True
+
+        conn.close()
+        
+        return render_template(template_name, user=user_info, period=period, requests=requests, pending_days=pending_days, is_also_manager=is_also_manager)
+
+    return render_template(template_name, user=user_info)
+
+
+@app.route("/rrhh/generate_periods")
+def generate_periods():
+    if session.get("role") != "RRHH":
+        flash("Acceso no autorizado.", "danger")
+        return redirect(url_for("dashboard"))
+
+    current_year = datetime.now().year
+    conn = get_db_connection()
+    employees = conn.execute("SELECT id, hire_date FROM employees WHERE is_active = 1;").fetchall()
+
+    generated_count = 0
+    for emp in employees:
+        emp_id = emp["id"]
+        hire_date = emp["hire_date"]
+        period_exists = conn.execute(
+            "SELECT id FROM vacation_periods WHERE employee_id = ? AND year = ?;",
+            (emp_id, current_year)
+        ).fetchone()
+        
+        if period_exists is None:
+            accrued_days = calculate_accrued_days(hire_date)
+            conn.execute(
+                "INSERT INTO vacation_periods (employee_id, year, total_days_accrued) VALUES (?, ?, ?);",
+                (emp_id, current_year, accrued_days)
+            )
+            generated_count += 1
+
+    conn.commit()
+    conn.close()
+    flash(f"Se generaron/verificaron {generated_count} nuevos periodos para el año {current_year}.", "success")
+    return redirect(url_for('dashboard'))
+
+@app.route("/request/new", methods=["GET", "POST"])
+def new_request():
+    if "user_id" not in session:
+        return redirect(url_for("login"))
+
+    conn = get_db_connection()
+    current_year = datetime.now().year
+    employee_id = session["user_id"]
+
+    period = conn.execute(
+        "SELECT id, total_days_accrued, days_taken FROM vacation_periods WHERE employee_id = ? AND year = ?",
+        (employee_id, current_year)
+    ).fetchone()
+
+    if not period:
+        conn.close()
+        flash("No tienes un período de vacaciones generado para este año. Contacta a RRHH.", "warning")
+        return redirect(url_for("dashboard"))
+
+    balance = period["total_days_accrued"] - period["days_taken"]
+
+    if request.method == "POST":
+        request_type = request.form["request_type"]
+        start_date_str = request.form.get("start_date")
+
+        if request_type == "HalfDay":
+            end_date_str = start_date_str
+        else:
+            end_date_str = request.form.get("end_date")
+
+        try:
+            if not start_date_str or not end_date_str:
+                raise ValueError("Las fechas no pueden estar vacías.")
+            
+            start_date = datetime.strptime(start_date_str, "%d/%m/%Y").date()
+            end_date = datetime.strptime(end_date_str, "%d/%m/%Y").date()
+
+        except (ValueError, TypeError):
+            flash("Formato de fecha inválido. Por favor, usa DD/MM/YYYY.", "danger")
+            return redirect(url_for("new_request"))
+
+        if end_date < start_date:
+            flash("La fecha de fin no puede ser anterior a la fecha de inicio.", "danger")
+            conn.close()
+            return redirect(url_for("new_request"))
+
+        days_requested = 0
+        if request_type == "FullDay":
+            days_requested = calculate_working_days(start_date, end_date)
+        elif request_type == "HalfDay":
+            days_requested = 0.5
+
+        if days_requested <= 0:
+            flash("No has seleccionado días laborables. Revisa las fechas.", "warning")
+            conn.close()
+            return redirect(url_for("new_request"))
+
+        if balance < days_requested:
+            flash(f"No tienes suficientes días disponibles. Saldo actual: {balance}, Solicitados: {days_requested}", "danger")
+            conn.close()
+            return redirect(url_for("new_request"))
+
+        conn.execute(
+            """
+            INSERT INTO vacation_requests (employee_id, period_id, start_date, end_date, request_type, days_requested)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (employee_id, period["id"], start_date, end_date, request_type, days_requested)
+        )
+        conn.commit()
+        conn.close()
+        
+        flash("Tu solicitud de vacaciones ha sido enviada correctamente.", "success")
+        return redirect(url_for("dashboard"))
+
+    conn.close()
+    return render_template("request_form.html", balance=balance)
+
+@app.route("/manage_requests")
+def manage_requests():
+    if session.get("role") not in ["Jefe", "RRHH"]:
+        flash("Acceso no autorizado.", "danger")
+        return redirect(url_for("dashboard"))
+    
+    manager_id = session["user_id"]
+    conn = get_db_connection()
+    
+    team_requests = conn.execute(
+        """
+        SELECT vr.id, vr.start_date, vr.end_date, vr.days_requested, e.full_name
+        FROM vacation_requests vr
+        JOIN employees e ON vr.employee_id = e.id
+        WHERE e.manager_id = ? AND vr.status = 'Pendiente'
+        ORDER BY vr.request_date
+        """,
+        (manager_id,)
+    ).fetchall()
+    
+    conn.close()
+    return render_template("manage_requests.html", requests=team_requests)
+
+@app.route("/request/approve/<int:request_id>", methods=["POST"])
+def approve_request(request_id):
+    if session.get("role") not in ["Jefe", "RRHH"]:
+        flash("Acceso no autorizado.", "danger")
+        return redirect(url_for("dashboard"))
+
+    manager_id = session["user_id"]
+    conn = get_db_connection()
+    
+    request_to_approve = conn.execute(
+        "SELECT id FROM vacation_requests WHERE id = ? AND employee_id IN (SELECT id FROM employees WHERE manager_id = ?)",
+        (request_id, manager_id)
+    ).fetchone()
+
+    if request_to_approve:
+        conn.execute(
+            "UPDATE vacation_requests SET status = 'Aprobado por Jefe', manager_approval_date = ? WHERE id = ?",
+            (datetime.now(), request_id)
+        )
+        conn.commit()
+        flash("Solicitud aprobada. Pasa a RRHH para la aprobación final.", "success")
+    else:
+        flash("No se pudo encontrar la solicitud o no tienes permiso para esta acción.", "danger")
+        
+    conn.close()
+    return redirect(url_for("manage_requests"))
+
+@app.route("/request/reject/<int:request_id>", methods=["POST"])
+def reject_request(request_id):
+    if session.get("role") not in ["Jefe", "RRHH"]:
+        flash("Acceso no autorizado.", "danger")
+        return redirect(url_for("dashboard"))
+
+    manager_id = session["user_id"]
+    conn = get_db_connection()
+
+    request_to_reject = conn.execute(
+        "SELECT id FROM vacation_requests WHERE id = ? AND employee_id IN (SELECT id FROM employees WHERE manager_id = ?)",
+        (request_id, manager_id)
+    ).fetchone()
+
+    if request_to_reject:
+        conn.execute("UPDATE vacation_requests SET status = 'Rechazado' WHERE id = ?", (request_id,))
+        conn.commit()
+        flash("La solicitud ha sido rechazada.", "info")
+    else:
+        flash("No se pudo encontrar la solicitud o no tienes permiso para esta acción.", "danger")
+
+    conn.close()
+    return redirect(url_for("manage_requests"))
+
+@app.route("/hr/approvals")
+def hr_approval_list():
+    if session.get("role") != "RRHH":
+        flash("Acceso no autorizado.", "danger")
+        return redirect(url_for("dashboard"))
+
+    conn = get_db_connection()
+    
+    hr_pending_requests = conn.execute(
+        """
+        SELECT vr.id, vr.start_date, vr.end_date, vr.days_requested, e.full_name as employee_name, m.full_name as manager_name
+        FROM vacation_requests vr
+        JOIN employees e ON vr.employee_id = e.id
+        LEFT JOIN employees m ON e.manager_id = m.id
+        WHERE vr.status = 'Aprobado por Jefe'
+        ORDER BY vr.request_date
+        """
+    ).fetchall()
+    
+    conn.close()
+    return render_template("hr_approval_list.html", requests=hr_pending_requests)
+
+@app.route("/hr/approve/<int:request_id>", methods=["POST"])
+def hr_approve_request(request_id):
+    if session.get("role") != "RRHH":
+        flash("Acceso no autorizado.", "danger")
+        return redirect(url_for("dashboard"))
+
+    conn = get_db_connection()
+    
+    req = conn.execute("SELECT period_id, days_requested FROM vacation_requests WHERE id = ? AND status = 'Aprobado por Jefe'", (request_id,)).fetchone()
+
+    if req:
+        conn.execute(
+            "UPDATE vacation_requests SET status = 'Aprobado por RRHH', hr_approval_date = ? WHERE id = ?",
+            (datetime.now(), request_id)
+        )
+        
+        conn.execute(
+            "UPDATE vacation_periods SET days_taken = days_taken + ? WHERE id = ?",
+            (req["days_requested"], req["period_id"])
+        )
+        
+        conn.commit()
+        flash("Solicitud aprobada y saldo actualizado.", "success")
+    else:
+        flash("No se pudo encontrar la solicitud o ya fue procesada.", "warning")
+
+    conn.close()
+    return redirect(url_for("hr_approval_list"))
+
+@app.route("/hr/reject/<int:request_id>", methods=["POST"])
+def hr_reject_request(request_id):
+    if session.get("role") != "RRHH":
+        flash("Acceso no autorizado.", "danger")
+        return redirect(url_for("dashboard"))
+
+    conn = get_db_connection()
+    
+    req_to_reject = conn.execute("SELECT id FROM vacation_requests WHERE id = ? AND status = 'Aprobado por Jefe'", (request_id,)).fetchone()
+
+    if req_to_reject:
+        conn.execute("UPDATE vacation_requests SET status = 'Rechazado' WHERE id = ?", (request_id,))
+        conn.commit()
+        flash("La solicitud ha sido rechazada.", "info")
+    else:
+        flash("No se pudo encontrar la solicitud o ya fue procesada.", "warning")
+
+    conn.close()
+    return redirect(url_for("hr_approval_list"))
+
+@app.route("/hr/employees")
+def hr_employee_list():
+    if session.get("role") != "RRHH":
+        flash("Acceso no autorizado.", "danger")
+        return redirect(url_for("dashboard"))
+    
+    conn = get_db_connection()
+    employees = conn.execute(
+        """
+        SELECT e.*, m.full_name as manager_name
+        FROM employees e
+        LEFT JOIN employees m ON e.manager_id = m.id
+        ORDER BY e.full_name
+        """
+    ).fetchall()
+    conn.close()
+    return render_template("hr_employee_list.html", employees=employees)
+
+@app.route("/hr/employee/add", methods=['GET', 'POST'])
+def hr_add_employee():
+    if session.get("role") != "RRHH":
+        flash("Acceso no autorizado.", "danger")
+        return redirect(url_for("dashboard"))
+
+    if request.method == 'POST':
+        try:
+            username = request.form['username']
+            full_name = request.form['full_name']
+            email = request.form['email']
+            password = request.form['password']
+            hire_date = datetime.strptime(request.form['hire_date'], '%d/%m/%Y').date()
+            role = request.form['role']
+            department = request.form['department']
+            job_title = request.form['job_title']
+            company = request.form['company']
+            manager_id = request.form.get('manager_id') or None
+        except (ValueError, TypeError):
+            flash("Formato de fecha de contratación inválido. Por favor, usa DD/MM/YYYY.", "danger")
+            return redirect(url_for('hr_add_employee'))
+
+        conn = get_db_connection()
+        try:
+            conn.execute(
+                """
+                INSERT INTO employees (username, full_name, email, password, hire_date, role, manager_id, department, job_title, company, is_ad_managed)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+                """,
+                (username, full_name, email, generate_password_hash(password), hire_date, role, manager_id, department, job_title, company)
+            )
+            conn.commit()
+            flash(f"Empleado '{full_name}' creado exitosamente.", "success")
+        except sqlite3.IntegrityError:
+            flash(f"El nombre de usuario '{username}' ya existe.", "danger")
+        finally:
+            conn.close()
+        return redirect(url_for('hr_employee_list'))
+
+    conn = get_db_connection()
+    managers = conn.execute("SELECT id, full_name FROM employees WHERE role = 'Jefe' AND is_active = 1").fetchall()
+    conn.close()
+    return render_template("hr_employee_form.html", managers=managers, form_title="Añadir Nuevo Empleado")
+
+@app.route("/hr/employee/edit/<int:employee_id>", methods=['GET', 'POST'])
+def hr_edit_employee(employee_id):
+    if session.get("role") != "RRHH":
+        flash("Acceso no autorizado.", "danger")
+        return redirect(url_for("dashboard"))
+    
+    conn = get_db_connection()
+    employee = conn.execute("SELECT * FROM employees WHERE id = ?", (employee_id,)).fetchone()
+    
+    if not employee:
+        flash("Empleado no encontrado.", "danger")
+        conn.close()
+        return redirect(url_for('hr_employee_list'))
+
+    if request.method == 'POST':
+        password = request.form['password']
+        role = request.form['role']
+        manager_id = request.form.get('manager_id') or None
+        is_active = 'is_active' in request.form
+
+        if employee['is_ad_managed']:
+            if password:
+                conn.execute(
+                    "UPDATE employees SET password = ?, role = ?, manager_id = ?, is_active = ? WHERE id = ?",
+                    (generate_password_hash(password), role, manager_id, is_active, employee_id)
+                )
+            else:
+                conn.execute(
+                    "UPDATE employees SET role = ?, manager_id = ?, is_active = ? WHERE id = ?",
+                    (role, manager_id, is_active, employee_id)
+                )
+        else:
+            try:
+                username = request.form['username']
+                full_name = request.form['full_name']
+                email = request.form['email']
+                hire_date = datetime.strptime(request.form['hire_date'], '%d/%m/%Y').date()
+                department = request.form['department']
+                job_title = request.form['job_title']
+                company = request.form['company']
+            except (ValueError, TypeError):
+                flash("Formato de fecha de contratación inválido. Por favor, usa DD/MM/YYYY.", "danger")
+                conn.close()
+                return redirect(url_for('hr_edit_employee', employee_id=employee_id))
+
+            try:
+                if password:
+                    conn.execute(
+                        """
+                        UPDATE employees SET username=?, full_name=?, email=?, password=?, hire_date=?, role=?, manager_id=?, department=?, job_title=?, company=?, is_active=?
+                        WHERE id = ?
+                        """,
+                        (username, full_name, email, generate_password_hash(password), hire_date, role, manager_id, department, job_title, company, is_active, employee_id)
+                    )
+                else:
+                    conn.execute(
+                        """
+                        UPDATE employees SET username=?, full_name=?, email=?, hire_date=?, role=?, manager_id=?, department=?, job_title=?, company=?, is_active=?
+                        WHERE id = ?
+                        """,
+                        (username, full_name, email, hire_date, role, manager_id, department, job_title, company, is_active, employee_id)
+                    )
+                conn.commit()
+                flash(f"Empleado '{full_name}' actualizado exitosamente.", "success")
+            except sqlite3.IntegrityError:
+                flash(f"El nombre de usuario '{username}' ya está en uso por otro empleado.", "danger")
+            finally:
+                conn.close()
+            return redirect(url_for('hr_employee_list'))
+
+        conn.commit()
+        conn.close()
+        return redirect(url_for('hr_employee_list'))
+
+    managers = conn.execute("SELECT id, full_name FROM employees WHERE role = 'Jefe' AND is_active = 1 AND id != ?", (employee_id,)).fetchall()
+    conn.close()
+    return render_template("hr_employee_form.html", employee=employee, managers=managers, form_title="Editar Empleado")
+
+@app.route("/hr/all_requests")
+def hr_all_requests():
+    if session.get("role") != "RRHH":
+        flash("Acceso no autorizado.", "danger")
+        return redirect(url_for("dashboard"))
+
+    conn = get_db_connection()
+    
+    filter_employee_id = request.args.get('employee_id', '')
+    filter_status = request.args.get('status', '')
+
+    query = """
+        SELECT vr.*, e.full_name as employee_name, m.full_name as manager_name
+        FROM vacation_requests vr
+        JOIN employees e ON vr.employee_id = e.id
+        LEFT JOIN employees m ON e.manager_id = m.id
+    """
+    conditions = []
+    params = []
+
+    if filter_employee_id:
+        conditions.append("vr.employee_id = ?")
+        params.append(filter_employee_id)
+    
+    if filter_status:
+        conditions.append("vr.status = ?")
+        params.append(filter_status)
+
+    if conditions:
+        query += " WHERE " + " AND ".join(conditions)
+
+    query += " ORDER BY vr.request_date DESC"
+
+    all_requests = conn.execute(query, params).fetchall()
+    
+    employees = conn.execute("SELECT id, full_name FROM employees ORDER BY full_name").fetchall()
+    
+    conn.close()
+    
+    return render_template("hr_all_requests.html", 
+                           requests=all_requests, 
+                           employees=employees, 
+                           filters={'employee_id': filter_employee_id, 'status': filter_status})
+
+@app.route("/hr/holidays", methods=['GET', 'POST'])
+def hr_manage_holidays():
+    if session.get("role") != "RRHH":
+        flash("Acceso no autorizado.", "danger")
+        return redirect(url_for("dashboard"))
+
+    conn = get_db_connection()
+
+    if request.method == 'POST':
+        try:
+            holiday_date_str = request.form['holiday_date']
+            description = request.form['description']
+            holiday_date = datetime.strptime(holiday_date_str, '%d/%m/%Y').date()
+        except (ValueError, TypeError):
+            flash("Formato de fecha inválido. Por favor, usa DD/MM/YYYY.", "danger")
+            return redirect(url_for('hr_manage_holidays'))
+        
+        if not holiday_date or not description:
+            flash("Ambos campos, fecha y descripción, son obligatorios.", "danger")
+        else:
+            try:
+                conn.execute(
+                    "INSERT INTO custom_holidays (holiday_date, description) VALUES (?, ?)",
+                    (holiday_date, description)
+                )
+                conn.commit()
+                flash("Feriado añadido exitosamente.", "success")
+            except sqlite3.IntegrityError:
+                flash("Esa fecha ya está registrada como feriado.", "danger")
+        
+        return redirect(url_for('hr_manage_holidays'))
+
+    holidays_list = conn.execute("SELECT id, holiday_date, description FROM custom_holidays ORDER BY holiday_date DESC").fetchall()
+    conn.close()
+    
+    return render_template("hr_holidays.html", holidays=holidays_list)
+
+@app.route("/hr/holiday/delete/<int:holiday_id>", methods=['POST'])
+def hr_delete_holiday(holiday_id):
+    if session.get("role") != "RRHH":
+        flash("Acceso no autorizado.", "danger")
+        return redirect(url_for("dashboard"))
+
+    conn = get_db_connection()
+    conn.execute("DELETE FROM custom_holidays WHERE id = ?", (holiday_id,))
+    conn.commit()
+    conn.close()
+    
+    flash("Feriado eliminado exitosamente.", "success")
+    return redirect(url_for('hr_manage_holidays'))
+
+def load_ad_config():
+    if os.path.exists(AD_CONFIG_PATH):
+        with open(AD_CONFIG_PATH, 'r') as f:
+            return json.load(f)
+    return {}
+
+def save_ad_config(config):
+    with open(AD_CONFIG_PATH, 'w') as f:
+        json.dump(config, f, indent=4)
+
+@app.route('/hr/ad_sync', methods=['GET', 'POST'])
+def hr_ad_sync():
+    if session.get("role") != "RRHH":
+        flash("Acceso no autorizado.", "danger")
+        return redirect(url_for("dashboard"))
+
+    if request.method == 'POST':
+        config = {
+            'server': request.form['server'],
+            'port': int(request.form['port']),
+            'use_ssl': 'use_ssl' in request.form,
+            'user': request.form['user'],
+            'password': request.form['password'],
+            'search_base': request.form['search_base'],
+            'email_attribute': request.form['email_attribute'],
+            'department_attribute': request.form['department_attribute'],
+            'hire_date_attribute': request.form['hire_date_attribute'],
+            'hire_date_format': request.form['hire_date_format'],
+            'job_title_attribute': request.form['job_title_attribute'],
+            'company_attribute': request.form['company_attribute'],
+        }
+        save_ad_config(config)
+        flash("Configuración de Directorio Activo guardada.", "success")
+        return redirect(url_for('hr_ad_sync'))
+
+    config = load_ad_config()
+    return render_template('hr_ad_sync.html', config=config)
+
+@app.route('/hr/trigger_ad_sync', methods=['POST'])
+def trigger_ad_sync():
+    if session.get("role") != "RRHH":
+        flash("Acceso no autorizado.", "danger")
+        return redirect(url_for("dashboard"))
+
+    config = load_ad_config()
+    if not config:
+        flash("La configuración de Directorio Activo no ha sido establecida.", "danger")
+        return redirect(url_for('hr_ad_sync'))
+
+    try:
+        summary = ad_sync.sync_users_from_ad(config)
+        flash(f"Sincronización completada. {summary['created']} usuarios creados, {summary['updated']} actualizados, {summary['deactivated']} desactivados.", "success")
+    except Exception as e:
+        flash(f"Error durante la sincronización: {e}", "danger")
+
+    return redirect(url_for('hr_ad_sync'))
+
+@app.route('/team_calendar')
+def team_calendar():
+    if session.get("role") not in ["Jefe", "RRHH"]:
+        flash("Acceso no autorizado.", "danger")
+        return redirect(url_for("dashboard"))
+
+    conn = get_db_connection()
+    
+    approved_requests = conn.execute(
+        """
+        SELECT e.full_name, vr.start_date, vr.end_date
+        FROM vacation_requests vr
+        JOIN employees e ON vr.employee_id = e.id
+        WHERE vr.status = 'Aprobado por RRHH'
+        """
+    ).fetchall()
+    conn.close()
+
+    events = []
+    for req in approved_requests:
+        start_date_obj = req['start_date']
+        end_date_obj = req['end_date'] + timedelta(days=1)
+        events.append({
+            'title': req['full_name'],
+            'start': start_date_obj.strftime('%Y-%m-%d'),
+            'end': end_date_obj.strftime('%Y-%m-%d'),
+            'allDay': True
+        })
+        
+    return render_template('team_calendar.html', events=json.dumps(events))
+
+@app.route('/hr/stats')
+def hr_stats_dashboard():
+    if session.get("role") != "RRHH":
+        flash("Acceso no autorizado.", "danger")
+        return redirect(url_for("dashboard"))
+
+    conn = get_db_connection()
+    current_year = str(datetime.now().year)
+
+    # KPIs
+    active_employees = conn.execute("SELECT COUNT(*) FROM employees WHERE is_active = 1").fetchone()[0]
+    pending_requests = conn.execute("SELECT COUNT(*) FROM vacation_requests WHERE status = 'Pendiente' OR status = 'Aprobado por Jefe'").fetchone()[0]
+    days_approved_this_year = conn.execute(
+        "SELECT SUM(days_requested) FROM vacation_requests WHERE status = 'Aprobado por RRHH' AND strftime('%Y', start_date) = ?", 
+        (current_year,)
+    ).fetchone()[0] or 0
+
+    # Datos para el gráfico de solicitudes por mes
+    requests_by_month_rows = conn.execute(
+        "SELECT strftime('%m', request_date) as month, COUNT(id) as count FROM vacation_requests WHERE strftime('%Y', request_date) = ? GROUP BY month ORDER BY month",
+        (current_year,)
+    ).fetchall()
+    
+    month_labels = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
+    requests_per_month_data = [0] * 12
+    for row in requests_by_month_rows:
+        month_index = int(row['month']) - 1
+        requests_per_month_data[month_index] = row['count']
+
+    # Datos para el gráfico de días por departamento
+    days_by_dept_rows = conn.execute(
+        """
+        SELECT e.department, SUM(vr.days_requested) as total_days 
+        FROM vacation_requests vr 
+        JOIN employees e ON vr.employee_id = e.id 
+        WHERE vr.status = 'Aprobado por RRHH' AND e.department IS NOT NULL AND e.department != ''
+        GROUP BY e.department
+        """
+    ).fetchall()
+
+    dept_labels = [row['department'] for row in days_by_dept_rows]
+    days_per_dept_data = [row['total_days'] for row in days_by_dept_rows]
+
+    conn.close()
+
+    return render_template('hr_stats_dashboard.html',
+                           active_employees=active_employees,
+                           pending_requests=pending_requests,
+                           days_approved_this_year=days_approved_this_year,
+                           month_labels=json.dumps(month_labels),
+                           requests_per_month_data=json.dumps(requests_per_month_data),
+                           dept_labels=json.dumps(dept_labels),
+                           days_per_dept_data=json.dumps(days_per_dept_data))
+
+
+if __name__ == "__main__":
+    setup_database()
+    app.run(debug=True, host="0.0.0.0", port=5001)

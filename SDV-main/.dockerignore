@@ -1,0 +1,10 @@
+.git
+.gitignore
+__pycache__
+venv
+env
+*.pyc
+*.pyo
+*.pyd
+firebase.json
+README.md

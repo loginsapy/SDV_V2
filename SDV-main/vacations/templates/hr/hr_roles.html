@@ -1,0 +1,81 @@
+{% extends "layout.html" %}
+{% block content %}
+<a href="{{ url_for('main.dashboard') }}" class="btn btn-secondary shadow" style="position: fixed; top: 80px; right: 20px; z-index: 1050;">
+    <i class="bi bi-arrow-left"></i> Volver al Panel
+</a>
+
+<div class="row justify-content-center" style="margin-top: 5rem;">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h3>Gestión de Roles</h3>
+            </div>
+            <div class="card-body">
+                {% if session.base_role != 'Asistente RRHH' %}
+                <form method="POST" action="{{ url_for('hr.hr_manage_roles') }}" class="row g-3 mb-4 align-items-end">
+                    <div class="col-md-5">
+                        <label for="name" class="form-label">Nuevo Rol</label>
+                        <input type="text" class="form-control" id="name" name="name" placeholder="Ej: Consultor" required>
+                    </div>
+                    <div class="col-md-4">
+                        <label for="base_role" class="form-label">Nivel (Permisos)</label>
+                        <select class="form-select" id="base_role" name="base_role" required>
+                            <option value="Empleado">Empleado</option>
+                            <option value="Jefe">Jefe</option>
+                            <option value="RRHH">RRHH</option>
+                            <option value="Asistente RRHH">Asistente RRHH</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <button type="submit" class="btn btn-primary w-100">Añadir</button>
+                    </div>
+                </form>
+                {% endif %}
+
+                <div class="table-responsive">
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th>Nombre del Rol</th>
+                                <th>Nivel</th>
+                                <th>Tipo</th>
+                                <th class="text-center">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for role in roles %}
+                            <tr>
+                                <td>{{ role.name }}</td>
+                                <td>{{ role.base_role }}</td>
+                                <td>
+                                    {% if role.is_system_role %}
+                                        <span class="badge bg-secondary">Sistema</span>
+                                    {% else %}
+                                        <span class="badge bg-info text-dark">Personalizado</span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-center">
+                                    {% if session.base_role != 'Asistente RRHH' %}
+                                    {% if role.is_system_role %}
+                                        <button class="btn btn-sm btn-secondary" disabled title="Los roles del sistema no se pueden eliminar"><i class="bi bi-lock-fill"></i></button>
+                                    {% else %}
+                                        <form action="{{ url_for('hr.hr_delete_role', role_id=role.id) }}" method="POST" class="d-inline" onsubmit="return confirm('¿Estás seguro de eliminar este rol?');">
+                                            <button type="submit" class="btn btn-sm btn-danger"><i class="bi bi-trash"></i></button>
+                                        </form>
+                                    {% endif %}
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="3" class="text-center">No hay roles registrados.</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,125 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="card mb-4">
+    <div class="card-header">
+        <h3>Panel de Empleado</h3>
+    </div>
+    <div class="card-body">
+        <h5 class="card-title">Bienvenido, {{ user.name }}</h5>
+        <p>Aquí podrás solicitar tus vacaciones y ver el estado de tus pedidos.</p>
+        <a href="{{ url_for('vacation_routes.new') }}" class="btn btn-success">Solicitar Vacaciones</a>
+        <a href="{{ url_for('hr.team_calendar') }}" class="btn btn-info ms-2">Ver Calendario de Ausencias</a>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header">
+        <h4>Mis Saldos de Vacaciones</h4>
+    </div>
+    <div class="card-body">
+        {% if periods %}
+        <div class="table-responsive">
+            <table class="table table-sm table-bordered">
+                <thead class="table-light">
+                    <tr>
+                        <th>Periodo (Año)</th>
+                        <th>Días Otorgados</th>
+                        <th>Días Tomados</th>
+                        <th>Tipo Licencia</th>
+                        <th>Saldo Disponible</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for p in periods %}
+                    <tr>
+                        <td>{{ p.year }}</td>
+                        <td>{{ p.total_days_accrued }}</td>
+                        <td>{{ p.days_taken }}</td>
+                        <td>{{ p.leave_name }}</td>
+                        <td><strong>{{ p.total_days_accrued - p.days_taken }}</strong></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+            <div class="alert alert-warning">No se encontraron periodos de vacaciones. Por favor, contacta a RRHH.</div>
+        {% endif %}
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h4>Mis Solicitudes</h4>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-striped table-hover">
+                <thead>
+                    <tr>
+                        <th>Fecha de Solicitud</th>
+                        <th>Inicio</th>
+                        <th>Fin</th>
+                        <th>Días</th>
+                        <th>Estado</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for req in requests %}
+                    <tr>
+                        <td>{{ req.request_date|format_date(include_time=True) }}</td>
+                        <td>{{ req.start_date|format_date }}</td>
+                        <td>{{ req.end_date|format_date }}</td>
+                        <td>{{ req.days_requested }}</td>
+                        <td>
+                            {% if req.status == 'Aprobado por RRHH' %}
+                                <span class="badge bg-success">Aprobado</span>
+                            {% elif req.status == 'Activo' %}
+                                <span class="badge bg-primary">Activo</span>
+                            {% elif req.status == 'Rechazado' %}
+                                <span class="badge bg-danger">Rechazado</span>
+                            {% elif req.status == 'Pendiente' %}
+                                <span class="badge bg-warning text-dark">Pendiente Aprob. Jefe</span>
+                            {% elif req.status == 'Aprobado por Jefe' %}
+                                <span class="badge bg-info text-dark">Pendiente Aprob. RRHH</span>
+                            {% elif req.status == 'Anulación Pendiente' %}
+                                <span class="badge bg-secondary">Anulación Pendiente</span>
+                            {% elif req.status == 'Anulado' %}
+                                <span class="badge bg-dark">Anulado</span>
+                            {% elif req.status == 'Finalizado' %}
+                                <span class="badge bg-secondary">Finalizado</span>
+                            {% else %}
+                                <span class="badge bg-secondary">{{ req.status }}</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if req.can_be_cancelled %}
+                                <form action="{{ url_for('vacation_routes.request_cancellation', request_id=req.id) }}" method="POST" onsubmit="return confirm('¿Estás seguro de que quieres solicitar la anulación de estas vacaciones?');">
+                                    <button type="submit" class="btn btn-sm btn-outline-danger">Anular</button>
+                                </form>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="6" class="text-center">No tienes solicitudes registradas.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    window.addEventListener('load', function () {
+        var popoverTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="popover"]'))
+        var popoverList = popoverTriggerList.map(function (popoverTriggerEl) {
+          return new bootstrap.Popover(popoverTriggerEl)
+        })
+    });
+</script>
+{% endblock %}

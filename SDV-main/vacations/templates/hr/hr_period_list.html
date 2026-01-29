@@ -1,0 +1,72 @@
+<!-- vacations/templates/hr/hr_period_list.html -->
+{% extends "layout.html" %}
+{% block content %}
+<a href="{{ url_for('main.dashboard') }}" class="btn btn-secondary shadow" style="position: fixed; top: 80px; right: 20px; z-index: 1050;">
+    <i class="bi bi-arrow-left"></i> Volver al Panel
+</a>
+
+<div class="card" style="margin-top: 5rem;">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h3>Gestión de Periodos</h3>
+        {% if session.base_role != 'Asistente RRHH' %}
+        <a href="{{ url_for('hr.hr_add_period') }}" class="btn btn-success">Añadir Periodo</a>
+        {% endif %}
+    </div>
+    <div class="card-body">
+        <form method="get" action="{{ url_for('hr.hr_period_list') }}" class="row g-3 mb-4 align-items-end">
+            <div class="col-md-8">
+                <label for="employee_id" class="form-label">Filtrar por Empleado</label>
+                <select name="employee_id" id="employee_id" class="form-select select2-multiple" multiple>
+                    {% for emp in employees %}
+                        <option value="{{ emp.id }}" {{ 'selected' if emp.id|string in filters.employee_id }}>
+                            {{ emp.full_name }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4 d-flex gap-2">
+                <button type="submit" class="btn btn-primary flex-grow-1">Filtrar</button>
+                <button type="submit" name="export" value="true" class="btn btn-success flex-grow-1"><i class="bi bi-file-earmark-excel"></i> Exportar</button>
+                <a href="{{ url_for('hr.hr_period_list') }}" class="btn btn-outline-secondary" title="Limpiar Filtros"><i class="bi bi-x-lg"></i></a>
+            </div>
+        </form>
+
+        <div class="table-responsive">
+            <table class="table table-striped">
+                <thead>
+                    <tr>
+                        <th>Empleado</th>
+                        <th>Año</th>
+                        <th>Días Otorgados</th>
+                        <th>Días Tomados</th>
+                        <th>Tipo Licencia</th>
+                        <th>Saldo</th>
+                        <th class="text-center">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for period in periods %}
+                    <tr>
+                        <td>{{ period.full_name }}</td>
+                        <td>{{ period.year }}</td>
+                        <td>{{ period.total_days_accrued }}</td>
+                        <td>{{ period.days_taken }}</td>
+                        <td>{{ period.leave_name }}</td>
+                        <td>{{ period.total_days_accrued - period.days_taken }}</td>
+                        <td class="text-center">
+                            {% if session.base_role != 'Asistente RRHH' %}
+                            <a href="{{ url_for('hr.hr_edit_period', period_id=period.id) }}" class="btn btn-sm btn-primary">Editar</a>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="6" class="text-center">No se encontraron periodos.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,196 @@
+
+<!-- vacations/templates/rrhh/dashboard.html -->
+{% extends "layout.html" %}
+{% block content %}
+<!-- KPI Section (Spec 3.1 Dashboard Ejecutivo) -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card text-white bg-primary bg-gradient h-100 shadow">
+            <div class="card-body text-center">
+                <h5 class="card-title">Solicitudes Pendientes</h5>
+                <p class="card-text display-4">{{ pending_count|default(0) }}</p>
+                <small>Requieren Acción</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-white bg-success bg-gradient h-100 shadow">
+            <div class="card-body text-center">
+                <h5 class="card-title">En Vacaciones Hoy</h5>
+                <p class="card-text display-4">{{ active_vacations_count|default(0) }}</p>
+                <small>Colaboradores Ausentes</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-white bg-info bg-gradient h-100 shadow">
+            <div class="card-body text-center">
+                <h5 class="card-title">Próximas Salidas</h5>
+                <p class="card-text display-4">{{ upcoming_vacations_count|default(0) }}</p>
+                <small>En los próximos 7 días</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-white bg-secondary bg-gradient h-100 shadow">
+            <div class="card-body text-center">
+                <h5 class="card-title">Tasa de Aprobación</h5>
+                <p class="card-text display-4">{{ approval_rate|default('95') }}%</p>
+                <small>Último Mes</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Columna Izquierda: Herramientas de Administración -->
+    <div class="col-lg-4">
+        <div class="card">
+            <div class="card-header">
+                <h3>Panel de Administración</h3>
+            </div>
+            <div class="card-body">
+                <h5 class="card-title">Bienvenido, {{ user.name }}</h5>
+                <p>Desde aquí puedes gestionar todos los aspectos del sistema.</p>
+                <div class="list-group">
+                    <a href="{{ url_for('hr.stats_dashboard') }}" class="list-group-item list-group-item-action">Dashboard de Estadísticas</a>
+                    <a href="{{ url_for('hr.hr_employee_list') }}" class="list-group-item list-group-item-action">Gestionar Empleados</a>
+                    <a href="{{ url_for('hr.hr_all_requests') }}" class="list-group-item list-group-item-action">Ver Todas las Solicitudes</a>
+                    <a href="{{ url_for('hr.hr_period_list') }}" class="list-group-item list-group-item-action">Gestión de Periodos</a>
+                    <a href="{{ url_for('hr.team_calendar') }}" class="list-group-item list-group-item-action">Ver Calendario de Ausencias</a>
+                    
+                    {% if session.base_role != 'Asistente RRHH' %}
+                    <a href="{{ url_for('hr.hr_approval_list') }}" class="list-group-item list-group-item-action">Aprobar Solicitudes Pendientes</a>
+                    <a href="{{ url_for('hr.hr_manage_roles') }}" class="list-group-item list-group-item-action">Gestionar Roles</a>
+                    <a href="{{ url_for('hr.hr_cancellation_list') }}" class="list-group-item list-group-item-action">Aprobar Anulaciones</a>
+                    <a href="{{ url_for('hr.hr_manage_leave_types') }}" class="list-group-item list-group-item-action">Gestionar Tipos de Licencia</a>
+                    <a href="{{ url_for('hr.generate_periods') }}" class="list-group-item list-group-item-action">Generar Periodos Anuales</a>
+                    <a href="{{ url_for('hr.hr_manage_holidays') }}" class="list-group-item list-group-item-action">Gestionar Feriados</a>
+                    <a href="{{ url_for('hr.hr_ad_sync') }}" class="list-group-item list-group-item-action">Sincronizar con Directorio Activo</a>
+                    {% endif %}
+                
+                </div>
+                {% if is_also_manager %}
+                <div class="mt-3">
+                    <a href="{{ url_for('vacation_routes.manage') }}" class="btn btn-primary w-100">Gestionar Solicitudes de Mi Equipo</a>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Columna Derecha: Información Personal de RRHH -->
+    <div class="col-lg-8">
+        <a href="{{ url_for('vacation_routes.new') }}" class="btn btn-success w-100 mb-4">Solicitar Mis Vacaciones</a>
+
+        <div class="card mb-4">
+            <div class="card-header">
+                <h4>Mi Saldo de Vacaciones</h4>
+            </div>
+            <div class="card-body">
+               {% if periods %}
+                <div class="table-responsive">
+                    <table class="table table-sm table-bordered">
+                        <thead>
+                            <tr>
+                                <th>Periodo (Año)</th>
+                                <th>Días Otorgados</th>
+                                <th>Días Tomados</th>
+                                <th>Tipo Licencia</th>
+                                <th>Saldo Disponible</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for p in periods %}
+                            <tr>
+                                <td>{{ p.year }}</td>
+                                <td>{{ p.total_days_accrued }}</td>
+                                <td>{{ p.days_taken }}</td>
+                                <td>{{ p.leave_name }}</td>
+                                <td><strong>{{ p.total_days_accrued - p.days_taken }}</strong></td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                    <div class="alert alert-warning">No se encontraron periodos de vacaciones.</div>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <h4>Mis Solicitudes</h4>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover">
+                        <thead>
+                            <tr>
+                                <th>Fecha Solicitud</th>
+                                <th>Inicio</th>
+                                <th>Fin</th>
+                                <th>Días</th>
+                                <th>Estado</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for req in requests %}
+                            <tr style="cursor: pointer;" 
+                                data-bs-toggle="popover" 
+                                data-bs-trigger="hover" 
+                                data-bs-placement="top" 
+                                data-bs-html="true" 
+                                title="<h5 class='m-0 p-0'>Detalle de la Solicitud</h5>"
+                                data-bs-content="
+                                    <strong>Tipo:</strong> {{ 'Día Completo' if req.request_type == 'FullDay' else 'Medio Día' }} <br>
+                                    <strong>Periodo:</strong> {{ req.start_date|format_date }} al {{ req.end_date|format_date }} <br>
+                                    <hr class='my-1'>
+                                    <strong>Aprob. Jefe:</strong> {{ req.manager_approval_date|format_date(include_time=True) }} <br>
+                                    <strong>Aprob. RRHH:</strong> {{ req.hr_approval_date|format_date(include_time=True) }}
+                                ">
+                                <td>{{ req.request_date|format_date(include_time=True) }}</td>
+                                <td>{{ req.start_date|format_date }}</td>
+                                <td>{{ req.end_date|format_date }}</td>
+                                <td>{{ req.days_requested }}</td>
+                                <td>
+                                    {% if req.status == 'Aprobado por RRHH' %}
+                                        <span class="badge bg-success">Aprobado</span>
+                                    {% elif req.status == 'Activo' %}
+                                        <span class="badge bg-primary">Activo</span>
+                                    {% elif req.status == 'Rechazado' %}
+                                        <span class="badge bg-danger">Rechazado</span>
+                                    {% elif req.status == 'Pendiente' %}
+                                        <span class="badge bg-warning text-dark">Pendiente Aprob. Jefe</span>
+                                    {% elif req.status == 'Aprobado por Jefe' %}
+                                        <span class="badge bg-info text-dark">Pendiente Aprob. RRHH</span>
+                                    {% else %}
+                                        <span class="badge bg-secondary">{{ req.status }}</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="5" class="text-center">No tienes solicitudes registradas.</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    window.addEventListener('load', function () {
+        var popoverTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="popover"]'))
+        var popoverList = popoverTriggerList.map(function (popoverTriggerEl) {
+          return new bootstrap.Popover(popoverTriggerEl)
+        })
+    });
+</script>
+{% endblock %}

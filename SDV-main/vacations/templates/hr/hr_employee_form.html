@@ -1,0 +1,110 @@
+
+<!-- templates/hr_employee_form.html (ACTUALIZADO) -->
+{% extends "layout.html" %}
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8 col-lg-7">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h3>{{ form_title }}</h3>
+                {% if employee %}
+                    {% if employee.is_ad_managed %}
+                        <span class="badge bg-primary"><i class="bi bi-building"></i> Usuario de Directorio Activo</span>
+                    {% else %}
+                        <span class="badge bg-secondary"><i class="bi bi-person-fill-gear"></i> Usuario Local</span>
+                    {% endif %}
+                {% endif %}
+            </div>
+            <div class="card-body">
+                <form method="POST">
+                    <h5 class="text-muted">Datos de Identificación</h5>
+                    <div class="mb-3">
+                        <label for="full_name" class="form-label">Nombre Completo</label>
+                        <input type="text" class="form-control" id="full_name" name="full_name" value="{{ employee.full_name if employee else '' }}" required {{ 'readonly' if employee and employee.is_ad_managed }}>
+                    </div>
+                    <div class="mb-3">
+                        <label for="username" class="form-label">Nombre de Usuario</label>
+                        <input type="text" class="form-control" id="username" name="username" value="{{ employee.username if employee else '' }}" required {{ 'readonly' if employee and employee.is_ad_managed }}>
+                    </div>
+                    <div class="mb-3">
+                        <label for="email" class="form-label">Correo Electrónico</label>
+                        <input type="email" class="form-control" id="email" name="email" value="{{ employee.email if employee else '' }}" {{ 'readonly' if employee and employee.is_ad_managed }}>
+                    </div>
+                    <div class="mb-3">
+                        <label for="password" class="form-label">Contraseña</label>
+                        <input type="password" class="form-control" id="password" name="password" {% if not employee %}required{% endif %}>
+                        {% if employee %}
+                        <div class="form-text">Dejar en blanco para no cambiar la contraseña.</div>
+                        {% endif %}
+                    </div>
+                    <hr>
+                    <h5 class="text-muted">Datos Organizacionales</h5>
+                     <div class="mb-3">
+                        <label for="hire_date" class="form-label">Fecha de Contratación</label>
+                        <input type="text" class="form-control datepicker" id="hire_date" name="hire_date" placeholder="DD/MM/YYYY" value="{{ employee.hire_date|format_date if employee else '' }}" required {{ 'readonly' if employee and employee.is_ad_managed }}>
+                    </div>
+                    <div class="mb-3">
+                        <label for="job_title" class="form-label">Puesto</label>
+                        <input type="text" class="form-control" id="job_title" name="job_title" value="{{ employee.job_title if employee else '' }}" {{ 'readonly' if employee and employee.is_ad_managed }}>
+                    </div>
+                    <div class="mb-3">
+                        <label for="department" class="form-label">Departamento</label>
+                        <input type="text" class="form-control" id="department" name="department" value="{{ employee.department if employee else '' }}" {{ 'readonly' if employee and employee.is_ad_managed }}>
+                    </div>
+                    <div class="mb-3">
+                        <label for="company" class="form-label">Empresa</label>
+                        <input type="text" class="form-control" id="company" name="company" value="{{ employee.company if employee else '' }}" {{ 'readonly' if employee and employee.is_ad_managed }}>
+                    </div>
+                    <hr>
+                    <h5 class="text-muted">Gestión Interna</h5>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="role" class="form-label">Rol en el Sistema</label>
+                            <select class="form-select" id="role" name="role" required>
+                                {% for r in roles %}
+                                    <option value="{{ r.name }}" {{ 'selected' if employee and employee.role == r.name }}>{{ r.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="manager_id" class="form-label">Jefe Directo</label>
+                            <select class="form-select" id="manager_id" name="manager_id">
+                                <option value="">-- Ninguno --</option>
+                                {% for manager in managers %}
+                                <option value="{{ manager.id }}" {{ 'selected' if employee and employee.manager_id == manager.id }}>
+                                    {{ manager.full_name }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                    {% if employee %}
+                    <div class="mb-3 form-check">
+                        <input type="checkbox" class="form-check-input" id="is_active" name="is_active" value="1" {{ 'checked' if employee.is_active }}>
+                        <label class="form-check-label" for="is_active">Empleado Activo</label>
+                    </div>
+                    {% endif %}
+                    <hr>
+                    <div class="d-flex justify-content-between">
+                        <a href="{{ url_for('hr.hr_employee_list') }}" class="btn btn-secondary">Cancelar</a>
+                        <button type="submit" class="btn btn-primary">Guardar Cambios</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    $(document).ready(function(){
+        $('.datepicker').datepicker({
+            format: 'dd/mm/yyyy',
+            autoclose: true,
+            todayHighlight: true,
+            language: 'es'
+        });
+    });
+</script>
+{% endblock %}

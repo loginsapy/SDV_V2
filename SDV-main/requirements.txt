@@ -1,0 +1,5 @@
+Flask>=2.0
+werkzeug>=2.0
+holidays>=0.40
+ldap3>=2.9
+gunicorn>=20.1.0

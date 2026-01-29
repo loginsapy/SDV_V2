@@ -1,0 +1,267 @@
+{% block styles %}
+<style>
+    .hidden {
+        display: none;
+    }
+</style>
+{% endblock %}
+{% extends "layout.html" %}
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h3>Crear Solicitud para Empleado (RRHH)</h3>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-info">
+                    <i class="bi bi-info-circle"></i> Esta solicitud se creará con estado <strong>Pendiente</strong> y deberá ser aprobada por el Jefe Directo del empleado para activarse.
+                </div>
+                <form method="POST" enctype="multipart/form-data">
+                    <div class="mb-3">
+                        <label for="employee_id" class="form-label">Empleado</label>
+                        <select name="employee_id" id="employee_id" class="form-select select2" required>
+                            <option value="">-- Seleccione un Empleado --</option>
+                            {% for emp in employees %}
+                                <option value="{{ emp.id }}" {{ 'selected' if selected_employee_id and selected_employee_id|int == emp.id }}>{{ emp.full_name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="leave_type_id" class="form-label">Tipo de Licencia</label>
+                        <select name="leave_type_id" id="leave_type_id" class="form-select" required>
+                            <option value="">-- Seleccione Tipo --</option>
+                            {% for lt in leave_types %}
+                                <option value="{{ lt.id }}">{{ lt.name }}</option>
+                            {% endfor %}
+                        </select>
+                        <div id="leave_info" class="form-text mt-2"></div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Saldo Disponible del Empleado</label>
+                        <input type="text" class="form-control" id="available_balance" readonly>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="start_date" class="form-label">Fecha de Inicio</label>
+                            <input type="text" class="form-control datepicker" id="start_date" name="start_date" placeholder="DD/MM/YYYY" required autocomplete="off">
+                        </div>
+                        <div class="col-md-6 mb-3" id="end_date_container">
+                            <label for="end_date" class="form-label">Fecha de Fin</label>
+                            <input type="text" class="form-control datepicker" id="end_date" name="end_date" placeholder="DD/MM/YYYY" autocomplete="off">
+                        </div>
+                    </div>
+
+                    <div class="mb-3 hidden" id="attachment_wrapper">
+                        <label for="attachment" class="form-label">Adjunto Obligatorio</label>
+                        <input type="file" class="form-control" id="attachment" name="attachment">
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="calculated_days" class="form-label">Total Días Hábiles</label>
+                        <input type="text" class="form-control" id="calculated_days" readonly>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="replacement_id" class="form-label">Reemplazo (Obligatorio)</label>
+                        <select name="replacement_id" id="replacement_id" class="form-select select2" required>
+                            <option value="">-- Seleccione Reemplazo --</option>
+                            {% for emp in employees %}
+                                <option value="{{ emp.id }}">{{ emp.full_name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <hr>
+                    <div class="d-flex justify-content-between">
+                        <a href="{{ url_for('hr.hr_all_requests') }}" class="btn btn-secondary">Cancelar</a>
+                        <button type="submit" class="btn btn-primary">Crear Solicitud</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    $(document).ready(function(){
+        $('.datepicker').datepicker({
+            format: 'dd/mm/yyyy',
+            autoclose: true,
+            todayHighlight: true,
+            language: 'es'
+        });
+
+        // Datos de tipos de licencia pasados desde Python
+        const leaveTypes = {{ leave_types_json|safe }};
+        const leaveSelect = document.getElementById('leave_type_id');
+        const employeeSelect = document.getElementById('employee_id');
+        const replacementSelect = document.getElementById('replacement_id');
+        const endDateContainer = document.getElementById('end_date_container');
+        const startDateInput = document.getElementById('start_date');
+        const endDateInput = document.getElementById('end_date');
+        const calculatedDaysInput = document.getElementById('calculated_days');
+        const availableBalanceInput = document.getElementById('available_balance');
+        const attachmentWrapper = document.getElementById('attachment_wrapper');
+        const attachmentInput = document.getElementById('attachment');
+        const leaveInfo = document.getElementById('leave_info');
+        
+        const holidays = {{ holidays_list|tojson }};
+        const workingSaturdays = {{ working_saturdays|tojson }};
+        let currentBalances = {};
+
+        // Función para obtener saldos del empleado seleccionado
+        async function fetchBalances(empId) {
+            if (!empId) {
+                currentBalances = {};
+                return;
+            }
+            try {
+                const response = await fetch(`/hr/api/balances/${empId}`);
+                if (response.ok) {
+                    currentBalances = await response.json();
+                    // Disparar evento change en leaveSelect para actualizar la vista si ya hay algo seleccionado
+                    leaveSelect.dispatchEvent(new Event('change'));
+                }
+            } catch (e) {
+                console.error("Error obteniendo saldos:", e);
+            }
+        }
+
+        // Función para parsear fecha DD/MM/YYYY
+        function parseDate(dateStr) {
+            if (!dateStr) return null;
+            const parts = dateStr.split('/');
+            return new Date(parts[2], parts[1] - 1, parts[0]);
+        }
+
+        // Función para formatear fecha a DD/MM/YYYY
+        function formatDate(date) {
+            const d = date.getDate().toString().padStart(2, '0');
+            const m = (date.getMonth() + 1).toString().padStart(2, '0');
+            const y = date.getFullYear();
+            return `${d}/${m}/${y}`;
+        }
+
+        // Calcular días hábiles
+        function calculateDays() {
+            const startStr = startDateInput.value;
+            const endStr = endDateInput.value;
+            const typeId = leaveSelect.value;
+
+            if (!startStr || !typeId) {
+                calculatedDaysInput.value = '';
+                return;
+            }
+
+            const type = leaveTypes[typeId];
+            const startDate = parseDate(startStr);
+
+            if (type.consumption_type === 'Fixed') {
+                // Días corridos: Calcular fecha fin y mostrar días fijos
+                const days = type.default_days;
+                const endDate = new Date(startDate);
+                endDate.setDate(startDate.getDate() + days - 1);
+                
+                // Actualizar fecha fin visualmente (aunque el input esté oculto o no requerido)
+                $(endDateInput).datepicker('update', endDate);
+                calculatedDaysInput.value = days;
+            } else {
+                // Días hábiles
+                if (!endStr) {
+                    calculatedDaysInput.value = '';
+                    return;
+                }
+                const endDate = parseDate(endStr);
+                if (endDate < startDate) {
+                    calculatedDaysInput.value = 'Fecha fin inválida';
+                    return;
+                }
+
+                let count = 0;
+                let curr = new Date(startDate);
+                while (curr <= endDate) {
+                    const dayOfWeek = curr.getDay(); // 0=Dom, 6=Sab
+                    const dateString = formatDate(curr);
+                    
+                    let isWorking = false;
+                    if (dayOfWeek >= 1 && dayOfWeek <= 5) { // Lun-Vie
+                        if (!holidays.includes(dateString)) isWorking = true;
+                    } else if (dayOfWeek === 6) { // Sab
+                        if (!holidays.includes(dateString) && workingSaturdays.includes(dateString)) isWorking = true;
+                    }
+
+                    if (isWorking) count++;
+                    curr.setDate(curr.getDate() + 1);
+                }
+                calculatedDaysInput.value = count;
+            }
+        }
+
+        // Escuchar cambios en el empleado
+        $(employeeSelect).on('select2:select', function (e) {
+            fetchBalances(e.params.data.id);
+            // Evitar que el empleado se seleccione a sí mismo como reemplazo (opcional, visual)
+        });
+
+        leaveSelect.addEventListener('change', function() {
+            const typeId = this.value;
+            let balanceHtml = '';
+            
+            // Mostrar saldo si existe
+            if (typeId && currentBalances[typeId] !== undefined) {
+                availableBalanceInput.value = currentBalances[typeId];
+            } else if (typeId) {
+                availableBalanceInput.value = "0";
+            }
+
+            if (typeId && leaveTypes[typeId]) {
+                const type = leaveTypes[typeId];
+                
+                if (type.consumption_type === 'Fixed') {
+                    // Es corrido/fijo
+                    endDateContainer.style.display = 'none';
+                    endDateInput.removeAttribute('required');
+                    leaveInfo.innerHTML = `<span class="text-primary"><i class="bi bi-calendar-check"></i> Licencia de Días Corridos (${type.default_days} días). Solo seleccione fecha de inicio.</span>`;
+                } else {
+                    // Es flexible
+                    endDateContainer.style.display = 'block';
+                    endDateInput.setAttribute('required', 'required');
+                    leaveInfo.innerHTML = `<span class="text-muted"><i class="bi bi-calendar-range"></i> Licencia Flexible (Días Hábiles). Seleccione inicio y fin.</span>`;
+                }
+
+                // Manejar Adjunto
+                if (type.requires_attachment) {
+                    attachmentWrapper.classList.remove('hidden');
+                    attachmentInput.required = true;
+                } else {
+                    attachmentWrapper.classList.add('hidden');
+                    attachmentInput.required = false;
+                }
+
+                calculateDays();
+            } else {
+                endDateContainer.style.display = 'block';
+                leaveInfo.textContent = '';
+                calculatedDaysInput.value = '';
+                availableBalanceInput.value = '';
+            }
+        });
+
+        $(startDateInput).on('changeDate', calculateDays);
+        $(endDateInput).on('changeDate', calculateDays);
+
+        $('.select2').select2({ theme: 'bootstrap-5' });
+
+        // Cargar saldos iniciales si hay un empleado preseleccionado
+        if (employeeSelect.value) {
+            fetchBalances(employeeSelect.value);
+        }
+    });
+</script>
+{% endblock %}

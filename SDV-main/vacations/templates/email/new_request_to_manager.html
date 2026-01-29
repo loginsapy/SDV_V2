@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html>
+<body>
+    <h2>Nueva Solicitud de Vacaciones</h2>
+    <p>Hola,</p>
+    <p>El empleado <strong>{{ employee_name }}</strong> ha solicitado vacaciones.</p>
+    <ul>
+        <li><strong>Desde:</strong> {{ start_date.strftime('%d/%m/%Y') }}</li>
+        <li><strong>Hasta:</strong> {{ end_date.strftime('%d/%m/%Y') }}</li>
+        <li><strong>Total de días:</strong> {{ days }}</li>
+    </ul>
+    <p>Puedes gestionar esta solicitud en el siguiente enlace:</p>
+    <a href="{{ approval_link }}">Gestionar Solicitudes</a>
+</body>
+</html>

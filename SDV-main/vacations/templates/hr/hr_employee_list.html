@@ -1,0 +1,81 @@
+
+<!-- templates/hr_employee_list.html (ACTUALIZADO) -->
+{% extends "layout.html" %}
+{% block content %}
+<a href="{{ url_for('main.dashboard') }}" class="btn btn-secondary shadow" style="position: fixed; top: 80px; right: 20px; z-index: 1050;">
+    <i class="bi bi-arrow-left"></i> Volver al Panel
+</a>
+
+<div class="card" style="margin-top: 5rem;">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h3>Gestión de Empleados</h3>
+        <a href="{{ url_for('hr.hr_add_employee') }}" class="btn btn-success">Añadir Empleado Local</a>
+    </div>
+    <div class="card-body">
+        <form method="get" action="{{ url_for('hr.hr_employee_list') }}" class="row g-3 mb-4 align-items-end">
+            <div class="col-md-8">
+                <label for="employee_id" class="form-label">Buscar Empleado</label>
+                <select name="employee_id" id="employee_id" class="form-select select2-multiple" multiple>
+                    {% for emp in all_employees %}
+                        <option value="{{ emp.id }}" {{ 'selected' if emp.id|string in filters.employee_id }}>{{ emp.full_name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4 d-flex gap-2">
+                <button type="submit" class="btn btn-primary flex-grow-1">Filtrar</button>
+                <button type="submit" name="export" value="true" class="btn btn-success flex-grow-1"><i class="bi bi-file-earmark-excel"></i> Exportar</button>
+                <a href="{{ url_for('hr.hr_employee_list') }}" class="btn btn-outline-secondary" title="Limpiar Filtros"><i class="bi bi-x-lg"></i></a>
+            </div>
+        </form>
+        <div class="table-responsive">
+            <table class="table table-striped">
+                <thead>
+                    <tr>
+                        <th>Origen</th>
+                        <th>Nombre Completo</th>
+                        <th>Correo Electrónico</th>
+                        <th>Puesto</th>
+                        <th>Departamento</th>
+                        <th>Empresa</th>
+                        <th>Estado</th>
+                        <th class="text-center">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for emp in employees %}
+                    <tr>
+                        <td class="text-center">
+                            {% if emp.is_ad_managed %}
+                                <i class="bi bi-building text-primary" title="Usuario de Directorio Activo"></i>
+                            {% else %}
+                                <i class="bi bi-person-fill-gear text-secondary" title="Usuario Local"></i>
+                            {% endif %}
+                        </td>
+                        <td>{{ emp.full_name }}</td>
+                        <td>{{ emp.email or 'N/A' }}</td>
+                        <td>{{ emp.job_title or 'N/A' }}</td>
+                        <td>{{ emp.department or 'N/A' }}</td>
+                        <td>{{ emp.company or 'N/A' }}</td>
+                        <td>
+                            {% if emp.is_active %}
+                                <span class="badge bg-success">Activo</span>
+                            {% else %}
+                                <span class="badge bg-secondary">Inactivo</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-center">
+                            <a href="{{ url_for('hr.hr_create_request', employee_id=emp.id) }}" class="btn btn-sm btn-warning" title="Generar Solicitud de Licencia"><i class="bi bi-calendar-plus"></i></a>
+                            <a href="{{ url_for('hr.hr_edit_employee', employee_id=emp.id) }}" class="btn btn-sm btn-primary">Editar</a>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="8" class="text-center">No hay empleados registrados.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

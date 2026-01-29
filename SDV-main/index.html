@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Infografía: Sistema Empresarial de Gestión de Vacaciones</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;800&display=swap" rel="stylesheet">
+    <!-- Color Palette: Brilliant Blues -->
+    <!-- NEITHER Mermaid JS NOR SVG were used anywhere in this output. All diagrams are built with HTML/CSS and all charts are rendered on Canvas via Chart.js. -->
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #E4F6F8;
+        }
+        .kpi-card {
+            background-color: #ffffff;
+            border-radius: 0.75rem;
+            padding: 1.5rem;
+            text-align: center;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        .kpi-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -2px rgb(0 0 0 / 0.1);
+        }
+        .kpi-number {
+            font-size: 3rem;
+            font-weight: 800;
+            color: #004AAD;
+        }
+        .kpi-label {
+            font-size: 1rem;
+            font-weight: 500;
+            color: #242F40;
+            margin-top: 0.5rem;
+        }
+        .section-title {
+            font-size: 2.25rem;
+            font-weight: 800;
+            color: #242F40;
+            text-align: center;
+            margin-bottom: 1rem;
+        }
+        .section-subtitle {
+            font-size: 1.125rem;
+            text-align: center;
+            color: #242F40;
+            max-width: 800px;
+            margin: 0 auto 3rem auto;
+        }
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+            height: 350px;
+            max-height: 400px;
+        }
+        .flow-diagram {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .flow-step {
+            background-color: white;
+            border: 2px solid #A1D6E2;
+            color: #242F40;
+            padding: 0.75rem 1.5rem;
+            border-radius: 0.5rem;
+            font-weight: 500;
+            text-align: center;
+            width: 80%;
+            max-width: 300px;
+            box-shadow: 0 2px 4px rgb(0 0 0 / 0.05);
+        }
+        .flow-step.hr-step {
+            border-color: #009FFD;
+            background-color: #E4F6F8;
+        }
+        .flow-step.manager-step {
+            border-color: #004AAD;
+        }
+         .flow-step.denied-step {
+            border-color: #ef4444;
+            background-color: #fee2e2;
+        }
+        .flow-arrow {
+            font-size: 2rem;
+            color: #A1D6E2;
+            font-weight: bold;
+        }
+        .card {
+             background-color: white;
+             border-radius: 0.75rem;
+             padding: 2rem;
+             box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+        }
+    </style>
+</head>
+<body class="text-gray-800">
+
+    <header class="bg-white py-8">
+        <div class="container mx-auto px-6 text-center">
+            <h1 class="text-5xl font-extrabold text-[#004AAD]">Sistema Empresarial de Gestión de Vacaciones</h1>
+            <p class="mt-4 text-lg text-[#242F40]">Una infografía sobre la arquitectura, funcionalidades y visión estratégica.</p>
+        </div>
+    </header>
+
+    <main class="container mx-auto px-6 py-12">
+
+        <!-- Sección 1: Arquitectura Central -->
+        <section class="mb-20">
+            <h2 class="section-title">Arquitectura Central</h2>
+            <p class="section-subtitle">
+                Diseñado para ser robusto, escalable y seguro, el sistema se apoya en una pila tecnológica moderna que garantiza el rendimiento y la mantenibilidad. La arquitectura desacoplada permite integrar PGlite de manera eficiente en un entorno de producción.
+            </p>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-8 items-center">
+                <div class="card text-center">
+                    <div class="text-6xl mb-4">🖥️</div>
+                    <h3 class="text-2xl font-bold mb-2 text-[#004AAD]">Backend Django</h3>
+                    <p>Utiliza el framework Django por su robustez, seguridad "baterías incluidas" y su potente interfaz de administración, que es la base del portal de RRHH.</p>
+                </div>
+                <div class="text-5xl text-center font-bold text-[#009FFD] hidden md:block">→</div>
+                <div class="card text-center">
+                    <div class="text-6xl mb-4">🗃️</div>
+                    <h3 class="text-2xl font-bold mb-2 text-[#004AAD]">Servicio PGlite</h3>
+                    <p>Un servicio Python dedicado y aislado gestiona la conexión única con la base de datos PGlite, comunicándose con la aplicación principal a través de una API interna.</p>
+                </div>
+                <div class="text-5xl text-center font-bold text-[#009FFD] hidden md:block">→</div>
+                 <div class="card text-center">
+                    <div class="text-6xl mb-4">🔔</div>
+                    <h3 class="text-2xl font-bold mb-2 text-[#004AAD]">Notificaciones en Tiempo Real</h3>
+                    <p>Usa Django Channels y Redis para notificaciones instantáneas vía WebSockets, manteniendo a todos los usuarios informados sin recargar la página.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Sección 2: Flujo de Aprobación -->
+        <section class="mb-20">
+            <h2 class="section-title">El Flujo de Trabajo Inteligente</h2>
+            <p class="section-subtitle">
+                El sistema orquesta un flujo de aprobación multinivel que sigue la jerarquía de la empresa, asegurando que cada solicitud sea revisada por las personas correctas en el momento oportuno.
+            </p>
+            <div class="card">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-12">
+                    <div>
+                        <h3 class="text-xl font-bold text-center mb-4 text-[#242F40]">Flujo de Solicitud y Aprobación</h3>
+                        <div class="flow-diagram">
+                            <div class="flow-step">1. Empleado envía solicitud</div>
+                            <div class="flow-arrow">↓</div>
+                            <div class="flow-step manager-step">2. Jefe Revisa</div>
+                            <div class="flow-arrow">↓</div>
+                            <div class="flow-step hr-step">3. RRHH Revisa</div>
+                            <div class="flow-arrow">↓</div>
+                            <div class="flow-step" style="background-color: #dcfce7; border-color: #22c55e;">4. Aprobación Final y Notificación</div>
+                        </div>
+                    </div>
+                    <div>
+                        <h3 class="text-xl font-bold text-center mb-4 text-[#242F40]">Flujo de Anulación</h3>
+                         <div class="flow-diagram">
+                            <div class="flow-step">1. Empleado solicita anulación</div>
+                            <div class="flow-arrow">↓</div>
+                            <div class="flow-step hr-step">2. RRHH Revisa y Aprueba</div>
+                            <div class="flow-arrow">↓</div>
+                            <div class="flow-step" style="background-color: #dcfce7; border-color: #22c55e;">3. Días devueltos al saldo</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Sección 3: Lógica de Negocio -->
+        <section class="mb-20">
+            <h2 class="section-title">Cumplimiento Legal y Lógica de Negocio</h2>
+            <p class="section-subtitle">
+                El motor de lógica de negocio está diseñado para cumplir estrictamente con el Artículo 218 del Código del Trabajo de Paraguay, calculando automáticamente los días de vacaciones según la antigüedad del empleado.
+            </p>
+            <div class="card">
+                 <div class="chart-container mx-auto" style="height: 400px; max-width: 800px;">
+                    <canvas id="seniorityChart"></canvas>
+                </div>
+                <p class="text-center mt-4 text-sm text-gray-600">Días de vacaciones anuales generados automáticamente por el sistema.</p>
+            </div>
+        </section>
+
+
+        <!-- Sección 4: Reportes Avanzados para RRHH -->
+        <section class="mb-20">
+            <h2 class="section-title">Reportes Avanzados para RRHH</h2>
+            <p class="section-subtitle">
+                El sistema no solo gestiona, sino que proporciona inteligencia de negocio. El panel de RRHH incluye métricas clave y visualizaciones para el análisis de tendencias, la proyección de costos y la toma de decisiones estratégicas.
+            </p>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                <div class="card">
+                    <h3 class="font-bold text-lg text-center mb-4">Pasivo Vacacional por Depto.</h3>
+                    <div class="chart-container" style="height: 250px;">
+                        <canvas id="liabilityChart"></canvas>
+                    </div>
+                    <p class="text-center mt-2 text-sm text-gray-500">Proyección del costo si todos los empleados tomaran sus días pendientes.</p>
+                </div>
+                <div class="card">
+                    <h3 class="font-bold text-lg text-center mb-4">Tendencia de Solicitudes Mensuales</h3>
+                    <div class="chart-container" style="height: 250px;">
+                        <canvas id="trendsChart"></canvas>
+                    </div>
+                    <p class="text-center mt-2 text-sm text-gray-500">Identifica los picos estacionales de solicitudes de vacaciones durante el año.</p>
+                </div>
+                <div class="card md:col-span-2 lg:col-span-1">
+                    <h3 class="font-bold text-lg text-center mb-4">Tasa de Uso por Departamento</h3>
+                    <div class="chart-container" style="height: 250px;">
+                        <canvas id="usageChart"></canvas>
+                    </div>
+                    <p class="text-center mt-2 text-sm text-gray-500">Compara el porcentaje de días de vacaciones utilizados frente a los acumulados.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Sección 5: Ecosistema y Futuro -->
+        <section>
+            <h2 class="section-title">Ecosistema y Hoja de Ruta Futura</h2>
+            <p class="section-subtitle">
+                El sistema está diseñado para integrarse con la infraestructura existente y evolucionar con nuevas funcionalidades que mejoren la experiencia y la eficiencia.
+            </p>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                 <div class="card">
+                    <h3 class="text-xl font-bold mb-4 text-[#242F40] text-center">Sincronización Flexible</h3>
+                    <p class="text-center">Capacidad para operar con una base de datos de empleados interna o sincronizarse con un Directorio Activo (LDAP) o Microsoft Entra ID, manteniendo los datos siempre actualizados.</p>
+                    <div class="flex justify-center gap-4 mt-6 text-4xl">
+                        <span title="Local">👤</span>
+                        <span class="font-thin">+</span>
+                        <span title="Active Directory">🏢</span>
+                    </div>
+                </div>
+                <div class="card">
+                    <h3 class="text-xl font-bold mb-4 text-[#242F40] text-center">Próximas Misiones</h3>
+                    <ul class="list-disc list-inside space-y-2">
+                        <li>**Integración de Calendarios:** Exportación de vacaciones aprobadas a Google Calendar y Outlook.</li>
+                        <li>**Centro de Notificaciones Interno:** Un icono de campana en la app con el historial de notificaciones.</li>
+                        <li>**Gestión de Políticas:** Interfaz para que RRHH ajuste las reglas de acumulación de días sin tocar el código.</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer class="bg-[#242F40] text-white text-center py-6 mt-12">
+        <p>&copy; 2025 Sistema de Gestión de Vacaciones. Una solución a medida para la empresa moderna.</p>
+    </footer>
+
+    <script>
+        const brilliantBlues = {
+            darkBlue: '#004AAD',
+            lightBlue: '#009FFD',
+            darkGray: '#242F40',
+            offWhite: '#E4F6F8',
+            accent: '#A1D6E2'
+        };
+
+        const defaultChartOptions = {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'top',
+                },
+                tooltip: {
+                    callbacks: {
+                        title: function(tooltipItems) {
+                            const item = tooltipItems[0];
+                            let label = item.chart.data.labels[item.dataIndex];
+                            if (Array.isArray(label)) {
+                                return label.join(' ');
+                            }
+                            return label;
+                        }
+                    }
+                }
+            }
+        };
+        
+        // Función para envolver etiquetas largas
+        function wrapLabels(label) {
+            const maxLength = 16;
+            if (typeof label === 'string' && label.length > maxLength) {
+                const words = label.split(' ');
+                let lines = [];
+                let currentLine = '';
+                words.forEach(word => {
+                    if ((currentLine + word).length > maxLength) {
+                        lines.push(currentLine.trim());
+                        currentLine = '';
+                    }
+                    currentLine += word + ' ';
+                });
+                lines.push(currentLine.trim());
+                return lines;
+            }
+            return label;
+        }
+
+        // Chart 1: Seniority Chart (Bar)
+        const seniorityCtx = document.getElementById('seniorityChart').getContext('2d');
+        new Chart(seniorityCtx, {
+            type: 'bar',
+            data: {
+                labels: ['Hasta 5 años', '5 a 10 años', 'Más de 10 años'],
+                datasets: [{
+                    label: 'Días de Vacaciones por Ley',
+                    data: [12, 18, 30],
+                    backgroundColor: [brilliantBlues.accent, brilliantBlues.lightBlue, brilliantBlues.darkBlue],
+                    borderColor: '#ffffff',
+                    borderWidth: 2
+                }]
+            },
+            options: { ...defaultChartOptions, indexAxis: 'y' }
+        });
+
+        // Chart 2: Liability Chart (Doughnut)
+        const liabilityCtx = document.getElementById('liabilityChart').getContext('2d');
+        new Chart(liabilityCtx, {
+            type: 'doughnut',
+            data: {
+                labels: ['Ventas', 'Tecnología', 'Operaciones', 'Marketing', wrapLabels('Recursos Humanos')],
+                datasets: [{
+                    label: 'Pasivo Vacacional',
+                    data: [12000, 25000, 18000, 9000, 5000],
+                    backgroundColor: [
+                        brilliantBlues.darkBlue,
+                        brilliantBlues.lightBlue,
+                        brilliantBlues.accent,
+                        '#60A5FA', 
+                        '#3B82F6'
+                    ],
+                    hoverOffset: 4
+                }]
+            },
+            options: defaultChartOptions
+        });
+
+        // Chart 3: Trends Chart (Line)
+        const trendsCtx = document.getElementById('trendsChart').getContext('2d');
+        new Chart(trendsCtx, {
+            type: 'line',
+            data: {
+                labels: ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'],
+                datasets: [{
+                    label: 'Solicitudes por Mes',
+                    data: [15, 22, 30, 25, 28, 45, 50, 42, 35, 28, 33, 60],
+                    fill: true,
+                    borderColor: brilliantBlues.darkBlue,
+                    backgroundColor: 'rgba(0, 74, 173, 0.1)',
+                    tension: 0.4
+                }]
+            },
+            options: defaultChartOptions
+        });
+        
+        // Chart 4: Usage Chart (Bar)
+        const usageCtx = document.getElementById('usageChart').getContext('2d');
+        new Chart(usageCtx, {
+            type: 'bar',
+            data: {
+                labels: ['Ventas', 'Tecnología', 'Operaciones', 'Marketing', 'RRHH'].map(wrapLabels),
+                datasets: [{
+                    label: 'Tasa de Uso (%)',
+                    data: [75, 60, 85, 90, 80],
+                    backgroundColor: brilliantBlues.lightBlue,
+                    borderColor: brilliantBlues.darkBlue,
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                ...defaultChartOptions,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        max: 100
+                    }
+                }
+            }
+        });
+
+    </script>
+</body>
+</html>

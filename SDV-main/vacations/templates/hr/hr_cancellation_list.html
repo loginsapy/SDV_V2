@@ -1,0 +1,66 @@
+{% extends "layout.html" %}
+{% block content %}
+<a href="{{ url_for('main.dashboard') }}" class="btn btn-secondary shadow" style="position: fixed; top: 80px; right: 20px; z-index: 1050;">
+    <i class="bi bi-arrow-left"></i> Volver al Panel
+</a>
+
+<div class="card" style="margin-top: 5rem;">
+    <div class="card-header">
+        <h3>Solicitudes de Anulación Pendientes</h3>
+    </div>
+    <div class="card-body">
+        <form method="get" action="{{ url_for('hr.hr_cancellation_list') }}" class="row g-3 mb-4 align-items-end">
+            <div class="col-md-8">
+                <label for="employee_id" class="form-label">Filtrar por Empleado</label>
+                <select name="employee_id" id="employee_id" class="form-select select2-multiple" multiple>
+                    {% for emp in employees %}
+                        <option value="{{ emp.id }}" {{ 'selected' if emp.id|string in filters.employee_id }}>{{ emp.full_name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4 d-flex gap-2">
+                <button type="submit" class="btn btn-primary flex-grow-1">Filtrar</button>
+                <button type="submit" name="export" value="true" class="btn btn-success flex-grow-1"><i class="bi bi-file-earmark-excel"></i> Exportar</button>
+                <a href="{{ url_for('hr.hr_cancellation_list') }}" class="btn btn-outline-secondary" title="Limpiar Filtros"><i class="bi bi-x-lg"></i></a>
+            </div>
+        </form>
+        <div class="table-responsive">
+            <table class="table table-striped">
+                <thead>
+                    <tr>
+                        <th>Empleado</th>
+                        <th>Desde</th>
+                        <th>Hasta</th>
+                        <th>Días a Devolver</th>
+                        <th class="text-center">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for req in requests %}
+                    <tr>
+                        <td>{{ req.employee_name }}</td>
+                        <td>{{ req.start_date|format_date }}</td>
+                        <td>{{ req.end_date|format_date }}</td>
+                        <td>{{ req.days_requested }}</td>
+                        <td class="text-center">
+                            {% if session.base_role != 'Asistente RRHH' %}
+                            <form action="{{ url_for('hr.hr_approve_cancellation', request_id=req.id) }}" method="POST" class="d-inline" onsubmit="return confirm('¿Aprobar la anulación y devolver los días al empleado?');">
+                                <button type="submit" class="btn btn-sm btn-success">Aprobar Anulación</button>
+                            </form>
+                            <form action="{{ url_for('hr.hr_reject_cancellation', request_id=req.id) }}" method="POST" class="d-inline">
+                                <button type="submit" class="btn btn-sm btn-danger">Rechazar Anulación</button>
+                            </form>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="5" class="text-center">No hay solicitudes de anulación pendientes.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

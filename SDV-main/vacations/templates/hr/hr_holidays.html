@@ -1,0 +1,204 @@
+
+<!-- templates/hr_holidays.html (CORREGIDO) -->
+{% extends "layout.html" %}
+{% block content %}
+<a href="{{ url_for('main.dashboard') }}" class="btn btn-secondary shadow" style="position: fixed; top: 80px; right: 20px; z-index: 1050;">
+    <i class="bi bi-arrow-left"></i> Volver al Panel
+</a>
+
+<div class="container-fluid" style="margin-top: 5rem;">
+    <ul class="nav nav-tabs mb-3" id="myTab" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="holidays-tab" data-bs-toggle="tab" data-bs-target="#holidays" type="button" role="tab">Gestión de Feriados</button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="saturdays-tab" data-bs-toggle="tab" data-bs-target="#saturdays" type="button" role="tab">Configuración de Sábados</button>
+        </li>
+    </ul>
+
+    <div class="tab-content" id="myTabContent">
+        <!-- Pestaña Feriados -->
+        <div class="tab-pane fade show active" id="holidays" role="tabpanel">
+            <div class="row">
+                {% if session.base_role != 'Asistente RRHH' %}
+                <div class="col-md-5">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5>Añadir Nuevo Feriado</h5>
+                        </div>
+                        <div class="card-body">
+                            <form action="{{ url_for('hr.hr_manage_holidays') }}" method="POST">
+                                <div class="mb-3">
+                                    <label for="holiday_date" class="form-label">Fecha</label>
+                                    <input type="text" class="form-control datepicker" id="holiday_date" name="holiday_date" placeholder="DD/MM/YYYY" required autocomplete="off">
+                                </div>
+                                <div class="mb-3">
+                                    <label for="description" class="form-label">Descripción</label>
+                                    <input type="text" class="form-control" id="description" name="description" placeholder="Ej: Día del Héroe" required>
+                                </div>
+                                <div class="mb-3 form-check">
+                                    <input type="checkbox" class="form-check-input" id="is_recurring" name="is_recurring">
+                                    <label class="form-check-label" for="is_recurring">¿Se repite cada año?</label>
+                                    <div class="form-text">Si se activa, el feriado aplicará automáticamente para todos los años futuros (ej: 1 de Mayo).</div>
+                                </div>
+                                <div class="d-grid">
+                                    <button type="submit" class="btn btn-primary">Añadir Feriado</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+                <div class="{{ 'col-md-7' if session.base_role != 'Asistente RRHH' else 'col-md-12' }}">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5>Feriados Personalizados Registrados</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="alert alert-secondary mb-3">
+                                <h6><i class="bi bi-lock-fill"></i> Feriados Fijos del Sistema (No editables)</h6>
+                                <ul class="mb-0 ps-3">
+                                    <li><strong>Domingos:</strong> No laborables (Semanal)</li>
+                                </ul>
+                            </div>
+
+                            <div class="table-responsive">
+                                <table class="table table-striped">
+                                    <thead>
+                                        <tr>
+                                            <th>Fecha</th>
+                                            <th>Descripción</th>
+                                            <th>Recurrencia</th>
+                                            <th class="text-center">Acción</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for holiday in holidays %}
+                                        <tr>
+                                            <td>{{ holiday.holiday_date|format_date }}</td>
+                                            <td>{{ holiday.description }}</td>
+                                            <td>
+                                                {% if holiday.is_recurring %}
+                                                    <span class="badge bg-info text-dark"><i class="bi bi-arrow-repeat"></i> Anual</span>
+                                                {% else %}
+                                                    <span class="text-muted">No</span>
+                                                {% endif %}
+                                            </td>
+                                            <td class="text-center">
+                                                {% if session.base_role != 'Asistente RRHH' %}
+                                                <form action="{{ url_for('hr.hr_delete_holiday', holiday_id=holiday.id) }}" method="POST" onsubmit="return confirm('¿Estás seguro de que quieres eliminar este feriado?');">
+                                                    <button type="submit" class="btn btn-sm btn-danger">Eliminar</button>
+                                                </form>
+                                                {% endif %}
+                                            </td>
+                                        </tr>
+                                        {% else %}
+                                        <tr>
+                                            <td colspan="4" class="text-center">No hay feriados personalizados registrados.</td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Pestaña Sábados -->
+        <div class="tab-pane fade" id="saturdays" role="tabpanel">
+            <div class="row">
+                {% if session.base_role != 'Asistente RRHH' %}
+                <div class="col-md-4">
+                    <div class="card mb-3">
+                        <div class="card-header bg-warning text-dark">
+                            <h5>Generar Ciclo de Sábados</h5>
+                        </div>
+                        <div class="card-body">
+                            <p class="small">Selecciona un sábado que será <strong>LABORAL</strong>. El sistema generará automáticamente el ciclo (Laboral - Libre - Laboral...) hasta fin de año.</p>
+                            <form action="{{ url_for('hr.hr_manage_saturdays') }}" method="POST">
+                                <input type="hidden" name="action" value="generate">
+                                <div class="mb-3">
+                                    <label for="start_date" class="form-label">Primer Sábado Laboral</label>
+                                    <input type="text" class="form-control datepicker" id="start_date" name="start_date" placeholder="DD/MM/YYYY" required autocomplete="off">
+                                </div>
+                                <div class="d-grid">
+                                    <button type="submit" class="btn btn-warning">Generar Ciclo</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+
+                    <div class="card border-danger">
+                        <div class="card-header bg-danger text-white">
+                            <h5>Restructurar (Borrar Todo)</h5>
+                        </div>
+                        <div class="card-body">
+                            <p class="small">Elimina toda la configuración de sábados. Útil si necesitas reiniciar el ciclo desde cero.</p>
+                            <form action="{{ url_for('hr.hr_manage_saturdays') }}" method="POST" onsubmit="return confirm('¿Estás seguro? Esto borrará toda la configuración de sábados y se considerarán libres por defecto.');">
+                                <input type="hidden" name="action" value="delete_all">
+                                <div class="d-grid">
+                                    <button type="submit" class="btn btn-outline-danger">Borrar Todos los Sábados</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+
+                <div class="{{ 'col-md-8' if session.base_role != 'Asistente RRHH' else 'col-md-12' }}">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5>Calendario de Sábados Configurados</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
+                                <table class="table table-sm table-bordered text-center">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>Fecha</th>
+                                            <th>Estado</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for sat in saturdays %}
+                                        <tr>
+                                            <td>{{ sat.effective_date|format_date }}</td>
+                                            <td>
+                                                {% if sat.is_working %}
+                                                    <span class="badge bg-warning text-dark">Laboral</span>
+                                                {% else %}
+                                                    <span class="badge bg-success">Libre</span>
+                                                {% endif %}
+                                            </td>
+                                        </tr>
+                                        {% else %}
+                                        <tr>
+                                            <td colspan="2">No hay configuración de sábados. Se asumen libres por defecto.</td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    $(document).ready(function(){
+        $('.datepicker').datepicker({
+            format: 'dd/mm/yyyy',
+            autoclose: true,
+            todayHighlight: true,
+            language: 'es'
+        });
+    });
+</script>
+{% endblock %}

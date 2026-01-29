@@ -1,0 +1,63 @@
+
+<!-- templates/manage_requests.html (CORREGIDO) -->
+{% extends "layout.html" %}
+{% block content %}
+<a href="{{ url_for('main.dashboard') }}" class="btn btn-secondary shadow" style="position: fixed; top: 80px; right: 20px; z-index: 1050;">
+    <i class="bi bi-arrow-left"></i> Volver al Panel
+</a>
+
+<div class="card" style="margin-top: 5rem;">
+    <div class="card-header">
+        <h3>Solicitudes Pendientes del Equipo</h3>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-striped">
+                <thead>
+                    <tr>
+                        <th>Empleado</th>
+                        <th>Reemplazo</th>
+                        <th>Desde</th>
+                        <th>Hasta</th>
+                        <th>Días</th>
+                        <th>Adjunto</th>
+                        <th class="text-center">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for req in requests %}
+                    <tr>
+                        <td>{{ req.full_name }}</td>
+                        <td>{{ req.replacement_name or 'N/A' }}</td>
+                        <td>{{ req.start_date|format_date }}</td>
+                        <td>{{ req.end_date|format_date }}</td>
+                        <td>{{ req.days_requested }}
+                            {% if req.request_type == 'HalfDay' and req.start_time %}
+                                <br><small class="text-muted">({{ req.start_time }})</small>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if req.attachment_path %}
+                                <a href="{{ url_for('vacation_routes.download_attachment', filename=req.attachment_path) }}" class="btn btn-sm btn-outline-primary" target="_blank"><i class="bi bi-paperclip"></i> Ver</a>
+                            {% endif %}
+                        </td>
+                        <td class="text-center">
+                            <form action="{{ url_for('vacation_routes.approve', request_id=req.id) }}" method="POST" class="d-inline">
+                                <button type="submit" class="btn btn-sm btn-success">Aprobar</button>
+                            </form>
+                            <form action="{{ url_for('vacation_routes.reject', request_id=req.id) }}" method="POST" class="d-inline">
+                                <button type="submit" class="btn btn-sm btn-danger">Rechazar</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="6" class="text-center">No hay solicitudes pendientes de tu equipo.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

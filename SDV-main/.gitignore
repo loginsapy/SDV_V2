@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+
+# Entornos virtuales
+venv/
+env/
+
+# Base de datos y configuraciones locales (instance contiene la DB y configs)
+instance/
+*.db
+*.sqlite3
+
+# Archivos subidos
+uploads/
+vacations/uploads/

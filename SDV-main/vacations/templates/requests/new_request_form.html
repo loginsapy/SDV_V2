@@ -1,0 +1,515 @@
+{% extends "layout.html" %}
+{% block styles %}
+<style>
+    .hidden {
+        display: none;
+    }
+    .datepicker table tr td.disabled-date {
+        background-color: #f8d7da !important;
+        color: #721c24 !important;
+    }
+    .datepicker table tr td.holiday-date {
+        background-color: #ffc107 !important; /* Amarillo */
+        color: #000 !important;
+        border-radius: 50%;
+    }
+</style>
+{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8 col-lg-6">
+        <div class="card" id="new_request_form">
+            <div class="card-header">
+                <h3>Nueva Solicitud de Vacaciones</h3>
+            </div>
+            <div class="card-body">
+                <div id="validation-alert" class="alert alert-danger" style="display:none;"></div>
+                
+                {% if not leave_types %}
+                <div class="alert alert-warning">
+                    <i class="bi bi-exclamation-triangle"></i> <strong>Atención:</strong> No tienes saldos ni tipos de licencia asignados. No puedes realizar solicitudes hasta que RRHH te asigne un periodo.
+                </div>
+                {% endif %}
+                
+                <form method="POST" action="{{ url_for('vacation_routes.new') }}" enctype="multipart/form-data">
+                    
+                    <div class="mb-3">
+                        <label for="leave_type_id" class="form-label">Tipo de Licencia</label>
+                        <select class="form-select" id="leave_type_id" name="leave_type_id" required>
+                            {% for lt in leave_types %}
+                                <option value="{{ lt.id }}" 
+                                        data-balance="{{ balances_map.get(lt.id, 0) }}"
+                                        data-requires-balance="{{ lt.requires_balance }}"
+                                        data-type="{{ lt.consumption_type }}"
+                                        data-default="{{ lt.default_days }}"
+                                        data-attachment="{{ lt.requires_attachment }}">
+                                    {{ lt.name }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Saldo Disponible</label>
+                        <input type="text" class="form-control" id="available_balance" readonly>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="request_type" class="form-label">Tipo de Solicitud</label>
+                        <select class="form-select" id="request_type" name="request_type" required>
+                            <option value="FullDay">Día Completo</option>
+                            <option value="HalfDay">Medio Día</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="replacement_name" class="form-label">Reemplazo (Obligatorio)</label>
+                        <select class="form-select" id="replacement_name" name="replacement_name" required>
+                            <option value="">-- Seleccione un compañero --</option>
+                            {% for emp in employees %}
+                                <option value="{{ emp.full_name }}">{{ emp.full_name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3" id="half_day_turn_wrapper" style="display:none;">
+                        <label for="half_day_turn" class="form-label">Horario (Turno)</label>
+                        <select class="form-select" id="half_day_turn" name="half_day_turn">
+                            <option value="Mañana">Mañana</option>
+                            <option value="Tarde">Tarde</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="start_date" class="form-label">Fecha de Inicio</label>
+                        <input type="text" class="form-control datepicker" id="start_date" name="start_date" placeholder="DD/MM/YYYY" required autocomplete="off">
+                    </div>
+                    <div class="mb-3" id="end_date_wrapper">
+                        <label for="end_date" class="form-label">Fecha de Fin</label>
+                        <input type="text" class="form-control datepicker" id="end_date" name="end_date" placeholder="DD/MM/YYYY" required autocomplete="off">
+                    </div>
+                    <div class="mb-3" id="fixed_end_date_wrapper" style="display:none;">
+                        <label class="form-label">Fecha de Fin (Calculada)</label>
+                        <input type="text" class="form-control" id="fixed_end_date" readonly>
+                    </div>
+                    <div class="mb-3 hidden" id="attachment_wrapper">
+                        <label for="attachment" class="form-label">Adjunto Obligatorio</label>
+                        <input type="file" class="form-control" id="attachment" name="attachment">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Días Hábiles Calculados</label>
+                        <input type="text" class="form-control" id="days_calculated" readonly value="0">
+                    </div>
+                    <div class="d-flex justify-content-between">
+                        <a href="{{ url_for('main.dashboard') }}" class="btn btn-secondary">Cancelar</a>
+                        <button type="submit" class="btn btn-primary">Enviar Solicitud</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+$(document).ready(function(){
+    // Rangos de vacaciones existentes (aprobadas/pendientes). 
+    // Se espera una lista de objetos: [{start: 'DD/MM/YYYY', end: 'DD/MM/YYYY'}, ...]
+    const existing_ranges = {{ existing_ranges|default([])|tojson|safe }};
+    
+    // Lista de feriados y sábados laborales (Movido al inicio para disponibilidad)
+    const holidays = {{ holidays_list|default([])|tojson|safe }}; 
+    const recurringHolidays = {{ recurring_holidays|default([])|tojson|safe }};
+    const workingSaturdays = {{ working_saturdays|default([])|tojson|safe }};
+    
+    // Datos para validación de reemplazos
+    // { "Nombre Empleado": [{start: 'DD/MM/YYYY', end: 'DD/MM/YYYY'}, ...], ... }
+    const employeeVacations = {{ employee_vacations|default({})|tojson|safe }};
+    // Compromisos del usuario actual como reemplazo
+    const myCommitments = {{ my_commitments|default([])|tojson|safe }};
+
+    $('.datepicker').datepicker({
+        format: 'dd/mm/yyyy',
+        autoclose: true,
+        todayHighlight: true,
+        language: 'es',
+        beforeShowDay: function(date) {
+            if (isDateBlocked(date)) {
+                return {enabled: false, classes: 'disabled-date', tooltip: 'Ya tienes vacaciones en esta fecha'};
+            }
+            if (isHoliday(date)) {
+                return {enabled: false, classes: 'holiday-date', tooltip: 'Feriado'};
+            }
+            return {enabled: true};
+        }
+    }).on('changeDate', function(e) {
+        // Detectar selección vía click en el calendario
+        if (e.target.id === 'start_date' && requestTypeSelect.value === 'HalfDay') {
+            endDateInput.value = startDateInput.value;
+            $('#end_date').datepicker('update', startDateInput.value);
+        }
+        validateReplacementAndCommitments();
+        calculateDays();
+    });
+
+    const requestTypeSelect = document.getElementById('request_type');
+    const startDateInput = document.getElementById('start_date');
+    const endDateInput = document.getElementById('end_date');
+    const endDateWrapper = document.getElementById('end_date_wrapper');
+    const fixedEndDateWrapper = document.getElementById('fixed_end_date_wrapper');
+    const fixedEndDateInput = document.getElementById('fixed_end_date');
+    const halfDayTurnWrapper = document.getElementById('half_day_turn_wrapper');
+    const halfDayTurnSelect = document.getElementById('half_day_turn');
+    const replacementSelect = document.getElementById('replacement_name');
+    const leaveTypeSelect = document.getElementById('leave_type_id');
+    const attachmentWrapper = document.getElementById('attachment_wrapper');
+    const attachmentInput = document.getElementById('attachment');
+    const availableBalanceInput = document.getElementById('available_balance');
+    const daysCalculatedInput = document.getElementById('days_calculated');
+    const submitBtn = document.querySelector('button[type="submit"]');
+    const validationAlert = document.getElementById('validation-alert');
+
+    // Deshabilitar formulario si no hay tipos de licencia
+    {% if not leave_types %}
+        $('input, select, textarea, button').prop('disabled', true);
+        $('.btn-secondary').prop('disabled', false); // Permitir botón cancelar
+        return;
+    {% endif %}
+
+    function updateLeaveTypeUI() {
+        if (leaveTypeSelect.selectedIndex === -1) return;
+
+        const option = leaveTypeSelect.options[leaveTypeSelect.selectedIndex];
+        const balance = parseFloat(option.getAttribute('data-balance')) || 0;
+        const requiresBalance = option.getAttribute('data-requires-balance') == '1' || option.getAttribute('data-requires-balance') === 'True';
+        const type = option.getAttribute('data-type'); // 'Flexible' or 'Fixed'
+        const defaultDays = parseInt(option.getAttribute('data-default')) || 0;
+        const requiresAttachment = option.getAttribute('data-attachment') == '1' || option.getAttribute('data-attachment') === 'True';
+
+        // Mostrar saldo
+        if (requiresBalance) {
+            availableBalanceInput.value = balance;
+        } else {
+            availableBalanceInput.value = "Ilimitado / No requiere saldo";
+        }
+
+        // Manejar Tipo Fijo vs Flexible
+        if (type === 'Fixed') {
+            endDateWrapper.style.display = 'none';
+            endDateInput.required = false;
+            fixedEndDateWrapper.style.display = 'block';
+        } else {
+            endDateWrapper.style.display = 'block';
+            endDateInput.required = true;
+            fixedEndDateWrapper.style.display = 'none';
+        }
+
+        // Manejar Adjunto
+        if (requiresAttachment) {
+            attachmentWrapper.classList.remove('hidden');
+            attachmentInput.required = true;
+        } else {
+            attachmentWrapper.classList.add('hidden');
+            attachmentInput.required = false;
+        }
+        
+        calculateDays();
+    }
+
+    function toggleEndDate() {
+        if (requestTypeSelect.value === 'HalfDay') {
+            endDateWrapper.style.display = 'none';
+            endDateInput.value = startDateInput.value;
+            halfDayTurnWrapper.style.display = 'block';
+            halfDayTurnSelect.required = true;
+        } else {
+            endDateWrapper.style.display = 'block';
+            endDateInput.required = true;
+            halfDayTurnWrapper.style.display = 'none';
+            halfDayTurnSelect.required = false;
+        }
+    }
+
+    requestTypeSelect.addEventListener('change', toggleEndDate);
+    leaveTypeSelect.addEventListener('change', updateLeaveTypeUI);
+    replacementSelect.addEventListener('change', function() {
+        validateReplacementAndCommitments();
+        calculateDays(); // Recalcular para actualizar estado del botón
+    });
+    
+    // Detectar cambios manuales (escritura con teclado)
+    $('#start_date, #end_date').on('change input keyup', function() {
+        if (this.id === 'start_date' && requestTypeSelect.value === 'HalfDay') {
+            endDateInput.value = startDateInput.value;
+            $('#end_date').datepicker('update', startDateInput.value);
+        }
+
+        validateReplacementAndCommitments();
+        calculateDays();
+    });
+
+    toggleEndDate();
+    updateLeaveTypeUI(); // Inicializar
+
+
+    function parseDate(dateStr) {
+        if (!dateStr) return null;
+        // Soporte para formato ISO/JSON (YYYY-MM-DD) que suele enviar el backend
+        if (dateStr.indexOf('-') > -1) {
+            const parts = dateStr.split(/[-T ]/); // Separar por guion, T o espacio
+            return new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+        }
+        // Soporte para formato local (DD/MM/YYYY)
+        const parts = dateStr.split('/');
+        return new Date(parseInt(parts[2], 10), parseInt(parts[1], 10) - 1, parseInt(parts[0], 10));
+    }
+
+
+    function isWorkingDay(date) {
+        const day = date.getDay();
+        if (day === 0) return false; // Domingo siempre libre
+        if (day === 6) {
+            // Sábado: Solo es laboral si está en la lista de workingSaturdays
+            const d = String(date.getDate()).padStart(2, '0');
+            const m = String(date.getMonth() + 1).padStart(2, '0');
+            const y = date.getFullYear();
+            return workingSaturdays.includes(`${d}/${m}/${y}`);
+        }
+        return true; // Lunes a Viernes son laborales
+    }
+
+
+    function isHoliday(date) {
+        const d = date.getDate();
+        const m = date.getMonth() + 1;
+
+        const day = String(d).padStart(2, '0');
+        const month = String(m).padStart(2, '0');
+        const year = date.getFullYear();
+        
+        const formattedFull = `${day}/${month}/${year}`;
+        const formattedRecurring = `${day}/${month}`; // Soporte para feriados recurrentes (ej: "24/05")
+
+        return holidays.includes(formattedFull) || recurringHolidays.includes(formattedRecurring);
+    }
+
+
+    function isDateBlocked(date) {
+        const checkDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+        
+        for (let range of existing_ranges) {
+            const start = parseDate(range.start);
+            const end = parseDate(range.end);
+            
+            if (start && end && checkDate >= start && checkDate <= end) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+
+    function hasOverlap(start, end) {
+        for (let range of existing_ranges) {
+            const rStart = parseDate(range.start);
+            const rEnd = parseDate(range.end);
+            
+            if (rStart && rEnd) {
+                // Asegurar comparación de fechas puras (sin hora)
+                rStart.setHours(0,0,0,0);
+                rEnd.setHours(0,0,0,0);
+                
+                // Lógica de superposición: (StartA <= EndB) y (EndA >= StartB)
+                if (start <= rEnd && end >= rStart) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+
+    function validateReplacementAndCommitments() {
+        const start = parseDate(startDateInput.value);
+        const end = parseDate(endDateInput.value);
+        
+        if (!start || !end) return;
+
+        // 1. Validar si YO soy reemplazo de alguien (myCommitments)
+        for (let range of myCommitments) {
+            const rStart = parseDate(range.start);
+            const rEnd = parseDate(range.end);
+            if (rStart && rEnd) {
+                rStart.setHours(0,0,0,0);
+                rEnd.setHours(0,0,0,0);
+                if (start <= rEnd && end >= rStart) {
+                    validationAlert.textContent = `No puedes solicitar vacaciones en estas fechas. Eres reemplazo de otro empleado del ${range.start} al ${range.end}.`;
+                    validationAlert.style.display = 'block';
+                    submitBtn.disabled = true;
+                    return false; // Bloqueo crítico
+                }
+            }
+        }
+
+        // 2. Filtrar y Validar Reemplazos
+        const selectedReplacement = replacementSelect.value;
+        let selectedIsValid = true;
+
+        // Iterar opciones para deshabilitar las ocupadas
+        for (let i = 0; i < replacementSelect.options.length; i++) {
+            const option = replacementSelect.options[i];
+            const empName = option.value;
+            
+            if (!empName) continue; // Skip placeholder
+
+            let isBusy = false;
+            if (employeeVacations[empName]) {
+                for (let range of employeeVacations[empName]) {
+                    const vStart = parseDate(range.start);
+                    const vEnd = parseDate(range.end);
+                    if (vStart && vEnd) {
+                        vStart.setHours(0,0,0,0);
+                        vEnd.setHours(0,0,0,0);
+                        if (start <= vEnd && end >= vStart) {
+                            isBusy = true;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (isBusy) {
+                option.disabled = true;
+                option.text = `${empName} (De vacaciones)`;
+                if (empName === selectedReplacement) selectedIsValid = false;
+            } else {
+                option.disabled = false;
+                option.text = empName; // Restaurar texto original si estaba deshabilitado
+            }
+        }
+
+        return selectedIsValid;
+    }
+
+
+    function calculateDays() {
+        validationAlert.style.display = 'none';
+        submitBtn.disabled = false;
+
+        if (leaveTypeSelect.selectedIndex === -1) {
+            daysCalculatedInput.value = 0;
+            return;
+        }
+
+        const option = leaveTypeSelect.options[leaveTypeSelect.selectedIndex];
+        const type = option.getAttribute('data-type');
+        
+        if (type === 'Fixed') {
+            // La validación de saldo para Fixed se hace simple contra defaultDays
+            const defaultDays = parseInt(option.getAttribute('data-default'));
+            const balance = parseFloat(option.getAttribute('data-balance'));
+            const requiresBalance = option.getAttribute('data-requires-balance') == '1' || option.getAttribute('data-requires-balance') === 'True';
+            
+            // Mostrar los días fijos calculados
+            daysCalculatedInput.value = defaultDays;
+
+            // Calcular y mostrar fecha fin para licencias fijas
+            const start = parseDate(startDateInput.value);
+            if (start && defaultDays > 0) {
+                const end = new Date(start);
+                end.setDate(start.getDate() + defaultDays - 1);
+                const dd = String(end.getDate()).padStart(2, '0');
+                const mm = String(end.getMonth() + 1).padStart(2, '0');
+                const yyyy = end.getFullYear();
+                fixedEndDateInput.value = `${dd}/${mm}/${yyyy}`;
+            } else {
+                fixedEndDateInput.value = '';
+            }
+
+            if (requiresBalance && defaultDays > balance) {
+                validationAlert.textContent = `Saldo insuficiente. La licencia requiere ${defaultDays} días pero tienes ${balance}.`;
+                validationAlert.style.display = 'block';
+                submitBtn.disabled = true;
+            }
+            return; 
+        }
+
+        if (requestTypeSelect.value === 'HalfDay') {
+            daysCalculatedInput.value = 0.5;
+            const balance = parseFloat(option.getAttribute('data-balance'));
+            const requiresBalance = option.getAttribute('data-requires-balance') == '1' || option.getAttribute('data-requires-balance') === 'True';
+
+            if (requiresBalance && 0.5 > balance) {
+                validationAlert.textContent = `Saldo insuficiente. Solicitas 0.5 días pero tienes ${balance}.`;
+                validationAlert.style.display = 'block';
+                submitBtn.disabled = true;
+            }
+
+            return;
+        }
+
+        const start = parseDate(startDateInput.value);
+        const end = parseDate(endDateInput.value);
+        
+        const today = new Date();
+        today.setHours(0,0,0,0);
+
+        if (start && end) {
+            if (end < start) {
+                validationAlert.textContent = "La fecha de fin no puede ser anterior a la de inicio.";
+                validationAlert.style.display = 'block';
+                submitBtn.disabled = true;
+                daysCalculatedInput.value = 0;
+                return;
+            }
+            
+            if (end < today) {
+                validationAlert.textContent = "La fecha de fin no puede ser anterior al día de hoy.";
+                validationAlert.style.display = 'block';
+                submitBtn.disabled = true;
+                daysCalculatedInput.value = 0;
+                return;
+            }
+
+            // Validar superposición de rangos antes de calcular
+            if (hasOverlap(start, end)) {
+                validationAlert.textContent = "El rango seleccionado coincide con vacaciones ya solicitadas o aprobadas.";
+                validationAlert.style.display = 'block';
+                submitBtn.disabled = true;
+                daysCalculatedInput.value = 0;
+                return;
+            }
+
+            // Validar reemplazo seleccionado y compromisos propios
+            const isReplacementValid = validateReplacementAndCommitments();
+            if (isReplacementValid === false) { // Si devuelve false explícito (bloqueo crítico) o el seleccionado es inválido
+                if (replacementSelect.value && replacementSelect.options[replacementSelect.selectedIndex].disabled) {
+                    validationAlert.textContent = "El reemplazo seleccionado está de vacaciones en el rango elegido. Por favor selecciona otro.";
+                    validationAlert.style.display = 'block';
+                }
+                submitBtn.disabled = true;
+                return;
+            }
+
+            let count = 0;
+            let current = new Date(start);
+            while (current <= end) {
+                // Contar solo si es día laboral Y NO es feriado
+                if (isWorkingDay(current) && !isHoliday(current)) {
+                    count++;
+                }
+                current.setDate(current.getDate() + 1);
+            }
+            daysCalculatedInput.value = count;
+
+            const balance = parseFloat(option.getAttribute('data-balance'));
+            const requiresBalance = option.getAttribute('data-requires-balance') == '1' || option.getAttribute('data-requires-balance') === 'True';
+
+            if (requiresBalance && count > balance) {
+                validationAlert.textContent = `Saldo insuficiente. Solicitas ${count} días pero tienes ${balance}.`;
+                validationAlert.style.display = 'block';
+                submitBtn.disabled = true;
+            }
+        }
+    }
+});
+
+</script>
+{% endblock %}

@@ -1,0 +1,109 @@
+
+<!-- templates/team_calendar.html (CORREGIDO) -->
+{% extends "layout.html" %}
+
+{% block styles %}
+    <!-- FullCalendar CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.css" rel="stylesheet" />
+    <style>
+        /* Estilos para el contenedor del calendario */
+        #calendar-container {
+            padding: 20px;
+            background-color: #ffffff;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            transition: background-color 0.3s ease, color 0.3s ease;
+        }
+
+        /* Estilos específicos para modo oscuro */
+        [data-bs-theme="dark"] #calendar-container {
+            background-color: #212529;
+            color: #f8f9fa;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+        }
+
+        [data-bs-theme="dark"] .fc-theme-standard td, 
+        [data-bs-theme="dark"] .fc-theme-standard th {
+            border-color: #495057;
+        }
+
+        [data-bs-theme="dark"] .fc-col-header-cell-cushion,
+        [data-bs-theme="dark"] .fc-daygrid-day-number {
+            color: #f8f9fa;
+            text-decoration: none;
+        }
+
+        [data-bs-theme="dark"] .fc-toolbar-title {
+            color: #f8f9fa;
+        }
+
+        /* Personalización de eventos según el tema */
+        /* Modo Claro: Fondo blanco -> Eventos oscuros (Azul intenso) */
+        .fc-event {
+            background-color: #0d6efd !important;
+            border-color: #0d6efd !important;
+            color: #ffffff !important;
+        }
+
+        /* Modo Oscuro: Fondo oscuro -> Eventos claros (Azul pastel/brillante) */
+        [data-bs-theme="dark"] .fc-event {
+            background-color: #6ea8fe !important;
+            border-color: #6ea8fe !important;
+            color: #000000 !important; /* Texto negro para contraste */
+        }
+    </style>
+{% endblock %}
+
+{% block content %}
+<a href="{{ url_for('main.dashboard') }}" class="btn btn-secondary shadow" style="position: fixed; top: 80px; right: 20px; z-index: 1050;">
+    <i class="bi bi-arrow-left"></i> Volver al Panel
+</a>
+
+<div class="card" style="margin-top: 5rem;">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h3>Calendario de Ausencias del Equipo</h3>
+    </div>
+    <div class="card-body">
+        <div id="calendar-container">
+            <div id="calendar"></div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<!-- FullCalendar JS -->
+<script src="https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/locales-all.min.js"></script>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        var calendarEl = document.getElementById('calendar');
+        
+        // Los eventos se pasan desde Flask como una cadena JSON segura
+        var eventsData = {{ events|safe }};
+
+        var calendar = new FullCalendar.Calendar(calendarEl, {
+            initialView: 'dayGridMonth',
+            locale: 'es', // Establecer el idioma a español
+            headerToolbar: {
+                left: 'prev,next today',
+                center: 'title',
+                right: 'dayGridMonth,timeGridWeek,listWeek'
+            },
+            events: eventsData,
+            eventDidMount: function(info) {
+                // Añadir un tooltip de Bootstrap a cada evento
+                var tooltip = new bootstrap.Tooltip(info.el, {
+                    title: info.event.title,
+                    placement: 'top',
+                    trigger: 'hover',
+                    container: 'body'
+                });
+            }
+        });
+
+        calendar.render();
+    });
+</script>
+{% endblock %}

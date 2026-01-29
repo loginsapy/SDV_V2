@@ -1,0 +1,89 @@
+
+<!-- vacations/templates/hr/hr_ad_sync.html (CORREGIDO) -->
+{% extends "layout.html" %}
+{% block content %}
+<div class="row">
+    <div class="col-lg-7">
+        <div class="card">
+            <div class="card-header">
+                <h3>Configuración de Directorio Activo (LDAP)</h3>
+            </div>
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('hr.hr_ad_sync') }}">
+                    <div class="mb-3">
+                        <label for="server" class="form-label">Servidor LDAP</label>
+                        <input type="text" class="form-control" id="server" name="server" placeholder="ej: 192.168.1.10 o dc.empresa.com" value="{{ config.server or '' }}" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="port" class="form-label">Puerto</label>
+                        <input type="number" class="form-control" id="port" name="port" value="{{ config.port or 389 }}" required>
+                    </div>
+                    <div class="mb-3 form-check">
+                        <input type="checkbox" class="form-check-input" id="use_ssl" name="use_ssl" {{ 'checked' if config.use_ssl }}>
+                        <label class="form-check-label" for="use_ssl">Usar SSL (LDAPS)</label>
+                    </div>
+                    <hr>
+                    <div class="mb-3">
+                        <label for="user" class="form-label">Usuario de Conexión (Bind DN)</label>
+                        <input type="text" class="form-control" id="user" name="user" placeholder="ej: CN=admin,OU=Users,DC=empresa,DC=com" value="{{ config.user or '' }}" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="password" class="form-label">Contraseña de Conexión</label>
+                        <input type="password" class="form-control" id="password" name="password" value="{{ config.password or '' }}" required>
+                    </div>
+                    <hr>
+                    <h5 class="text-muted">Mapeo de Atributos</h5>
+                    <div class="mb-3">
+                        <label for="search_base" class="form-label">Base de Búsqueda (Search Base)</label>
+                        <input type="text" class="form-control" id="search_base" name="search_base" placeholder="ej: OU=Empleados,DC=empresa,DC=com" value="{{ config.search_base or '' }}" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="email_attribute" class="form-label">Atributo para Correo Electrónico</label>
+                        <input type="text" class="form-control" id="email_attribute" name="email_attribute" placeholder="ej: mail" value="{{ config.email_attribute or 'mail' }}" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="hire_date_attribute" class="form-label">Atributo para Fecha de Contratación</label>
+                        <input type="text" class="form-control" id="hire_date_attribute" name="hire_date_attribute" placeholder="ej: pager, whenCreated" value="{{ config.hire_date_attribute or 'pager' }}" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="hire_date_format" class="form-label">Formato de Fecha de Contratación</label>
+                        <input type="text" class="form-control" id="hire_date_format" name="hire_date_format" placeholder="ej: %d/%m/%Y" value="{{ config.hire_date_format or '%d/%m/%Y' }}" required>
+                        <div class="form-text">Especifica el formato de fecha usado en el atributo de contratación (ej. %d/%m/%Y, %Y%m%d).</div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="job_title_attribute" class="form-label">Atributo para Puesto</label>
+                        <input type="text" class="form-control" id="job_title_attribute" name="job_title_attribute" placeholder="ej: title" value="{{ config.job_title_attribute or 'title' }}" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="department_attribute" class="form-label">Atributo para Departamento</label>
+                        <input type="text" class="form-control" id="department_attribute" name="department_attribute" placeholder="ej: department" value="{{ config.department_attribute or 'department' }}" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="company_attribute" class="form-label">Atributo para Empresa</label>
+                        <input type="text" class="form-control" id="company_attribute" name="company_attribute" placeholder="ej: company" value="{{ config.company_attribute or 'company' }}" required>
+                    </div>
+                    <div class="d-flex justify-content-between">
+                        <a href="{{ url_for('main.dashboard') }}" class="btn btn-secondary">Cancelar</a>
+                        <button type="submit" class="btn btn-primary">Guardar Configuración</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-5">
+        <div class="card">
+            <div class="card-header">
+                <h3>Ejecutar Sincronización</h3>
+            </div>
+            <div class="card-body">
+                <p>Haz clic en el botón para iniciar la sincronización manual de usuarios desde el Directorio Activo. Este proceso añadirá nuevos usuarios, actualizará los existentes y desactivará a los que ya no se encuentren en el AD.</p>
+                <form action="{{ url_for('hr.trigger_ad_sync') }}" method="POST" onsubmit="return confirm('Esta acción puede tardar varios minutos y modificará la base de datos de usuarios. ¿Estás seguro de que quieres continuar?');">
+                    <div class="d-grid">
+                        <button type="submit" class="btn btn-warning">Sincronizar Usuarios Ahora</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

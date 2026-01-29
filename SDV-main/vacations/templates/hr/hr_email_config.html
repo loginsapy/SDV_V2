@@ -1,0 +1,50 @@
+<!-- vacations/templates/hr/hr_email_config.html (NUEVO ARCHIVO) -->
+{% extends "layout.html" %}
+{% block content %}
+<a href="{{ url_for('main.dashboard') }}" class="btn btn-secondary shadow" style="position: fixed; top: 80px; right: 20px; z-index: 1050;">
+    <i class="bi bi-arrow-left"></i> Volver al Panel
+</a>
+
+<div class="card" style="margin-top: 5rem;">
+    <div class="card-header">
+        <h3>Configuración del Servidor de Correo (SMTP)</h3>
+    </div>
+    <div class="card-body">
+        <form method="POST" action="{{ url_for('hr.hr_email_config') }}">
+            <div class="mb-3">
+                <label for="server" class="form-label">Servidor SMTP</label>
+                <input type="text" class="form-control" id="server" name="server" value="{{ config.MAIL_SERVER if config else '' }}" required>
+            </div>
+            <div class="mb-3">
+                <label for="port" class="form-label">Puerto</label>
+                <input type="number" class="form-control" id="port" name="port" value="{{ config.MAIL_PORT if config else 587 }}" required>
+            </div>
+            <div class="mb-3">
+                <label for="sender" class="form-label">Correo Remitente</label>
+                <input type="email" class="form-control" id="sender" name="sender" value="{{ config.MAIL_DEFAULT_SENDER if config else '' }}" required>
+            </div>
+            <hr>
+            <div class="mb-3">
+                <label for="username" class="form-label">Usuario</label>
+                <input type="text" class="form-control" id="username" name="username" value="{{ config.MAIL_USERNAME if config else '' }}" required>
+            </div>
+            <div class="mb-3">
+                <label for="password" class="form-label">Contraseña</label>
+                <input type="password" class="form-control" id="password" name="password" value="{{ config.MAIL_PASSWORD if config else '' }}" required>
+            </div>
+            <hr>
+            <div class="form-check mb-2">
+                <input class="form-check-input" type="checkbox" id="use_tls" name="use_tls" {{ 'checked' if config and config.MAIL_USE_TLS }}>
+                <label class="form-check-label" for="use_tls">Usar TLS</label>
+            </div>
+            <div class="form-check mb-3">
+                <input class="form-check-input" type="checkbox" id="use_ssl" name="use_ssl" {{ 'checked' if config and config.MAIL_USE_SSL }}>
+                <label class="form-check-label" for="use_ssl">Usar SSL</label>
+            </div>
+            <div class="d-flex justify-content-end">
+                <button type="submit" class="btn btn-primary">Guardar Configuración</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

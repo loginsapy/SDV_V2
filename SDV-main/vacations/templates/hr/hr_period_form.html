@@ -1,0 +1,150 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h3>{{ form_title }}</h3>
+            </div>
+            <div class="card-body">
+                <form method="POST">
+                    {% if period %}
+                        <!-- Modo Edición -->
+                        <h5 class="mb-3">{{ period.full_name }}</h5>
+                        <div class="mb-3">
+                            <label for="year" class="form-label">Año</label>
+                            <input type="number" class="form-control" id="year" name="year" value="{{ period.year }}" readonly>
+                        </div>
+                    {% else %}
+                        <!-- Modo Añadir -->
+                        <div class="mb-3">
+                            <label for="employee_id" class="form-label">Empleado</label>
+                            <select name="employee_id" id="employee_id" class="form-select" required>
+                                <option value="" disabled selected>-- Seleccione un Empleado --</option>
+                                {% for emp in employees %}
+                                    <option value="{{ emp.id }}">{{ emp.full_name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="year" class="form-label">Año</label>
+                            <input type="number" class="form-control" id="year" name="year" placeholder="Ej: {{ now().year }}" required>
+                        </div>
+                    {% endif %}
+
+                    <div class="mb-3">
+                        <label for="total_days_accrued" class="form-label">Días Otorgados</label>
+                        <input type="number" step="0.5" class="form-control" id="total_days_accrued" name="total_days_accrued" value="{{ period.total_days_accrued if period else '' }}" required>
+                    </div>
+
+                    {% if period %}
+                        <!-- Solo mostrar 'Días Tomados' en modo edición -->
+                        <div class="mb-3">
+                            <label for="days_taken" class="form-label">Días Tomados</label>
+                            <input type="number" step="0.5" class="form-control" id="days_taken" name="days_taken" value="{{ period.days_taken }}" required>
+                        </div>
+                    {% endif %}
+
+                    <hr>
+                    <div class="d-flex justify-content-between">
+                        <a href="{{ url_for('hr.hr_period_list') }}" class="btn btn-secondary">Cancelar</a>
+                        <button type="submit" class="btn btn-primary">Guardar Cambios</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        {% if period %}
+        <div class="card mt-4">
+            <div class="card-header">
+                <h5>Licencias Asignadas a {{ period.full_name }}</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover">
+                        <thead>
+                            <tr>
+                                <th>Tipo de Licencia</th>
+                                <th>Año</th>
+                                <th>Días Totales</th>
+                                <th>Días Usados</th>
+                                <th>Días Disponibles</th>
+                                <th>Acción</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for p in employee_periods %}
+                            <tr class="{{ 'table-primary' if p.id == period.id else '' }}">
+                                <td>{{ p.leave_name }}</td>
+                                <td>{{ p.year }}</td>
+                                <td>{{ p.total_days_accrued }}</td>
+                                <td>{{ p.days_taken }}</td>
+                                <td>{{ p.total_days_accrued - p.days_taken }}</td>
+                                <td>
+                                    {% if p.id != period.id %}
+                                    <a href="{{ url_for('hr.hr_edit_period', period_id=p.id) }}" class="btn btn-sm btn-outline-primary">Editar</a>
+                                    {% else %}
+                                    <span class="badge bg-primary">Editando</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="card mt-4">
+            <div class="card-header">
+                <h5>Asignar Nueva Licencia</h5>
+            </div>
+            <div class="card-body">
+                <form method="POST" class="row g-3 align-items-end">
+                    <input type="hidden" name="action" value="add_license">
+                    <div class="col-md-4">
+                        <label class="form-label">Tipo de Licencia</label>
+                        <select name="new_leave_type_id" class="form-select" required>
+                            {% for lt in leave_types %}
+                            <option value="{{ lt.id }}">{{ lt.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Año</label>
+                        <input type="number" name="new_year" class="form-control" value="{{ now().year }}" readonly>
+                    </div>
+                    <div class="col-md-4">
+                        <button type="submit" class="btn btn-success w-100">Asignar</button>
+                        <div class="form-text text-end">Los días se calculan automáticamente.</div>
+                    </div>
+                </form>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const leaveSelect = document.getElementById('leave_type_id');
+        const infoDiv = document.getElementById('leave-type-info');
+
+        function updateInfo() {
+            const option = leaveSelect.options[leaveSelect.selectedIndex];
+            if (option) {
+                const type = option.getAttribute('data-type');
+                const defaultDays = option.getAttribute('data-default');
+                if (type === 'Fixed') {
+                    infoDiv.textContent = `ℹ️ Esta licencia es de Días Corridos (Fija: ${defaultDays} días).`;
+                } else {
+                    infoDiv.textContent = `ℹ️ Esta licencia es de Días Hábiles (Flexible).`;
+                }
+            }
+        }
+
+        leaveSelect.addEventListener('change', updateInfo);
+        updateInfo(); // Inicializar
+    });
+</script>
+{% endblock %}

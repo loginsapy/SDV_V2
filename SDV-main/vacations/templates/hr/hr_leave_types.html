@@ -1,0 +1,91 @@
+{% extends "layout.html" %}
+{% block content %}
+<a href="{{ url_for('main.dashboard') }}" class="btn btn-secondary shadow" style="position: fixed; top: 80px; right: 20px; z-index: 1050;">
+    <i class="bi bi-arrow-left"></i> Volver al Panel
+</a>
+
+<div class="row justify-content-center" style="margin-top: 5rem;">
+    <div class="col-md-10">
+        <div class="card">
+            <div class="card-header">
+                <h3>Gestión de Tipos de Licencia</h3>
+            </div>
+            <div class="card-body">
+                {% if session.base_role != 'Asistente RRHH' %}
+                <form method="POST" action="{{ url_for('hr.hr_manage_leave_types') }}" class="row g-3 mb-4 align-items-end">
+                    <div class="col-md-3">
+                        <label for="name" class="form-label">Nombre</label>
+                        <input type="text" class="form-control" id="name" name="name" placeholder="Ej: Maternidad" required>
+                    </div>
+                    <div class="col-md-3">
+                        <label for="consumption_type" class="form-label">Tipo Consumo</label>
+                        <select class="form-select" id="consumption_type" name="consumption_type">
+                            <option value="Flexible">Días Hábiles (Flexible)</option>
+                            <option value="Fixed">Días Corridos (Fijo)</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label for="default_days" class="form-label">Días (Si es Fijo)</label>
+                        <input type="number" class="form-control" id="default_days" name="default_days" value="0">
+                    </div>
+                    <div class="col-md-2">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="requires_balance" name="requires_balance" checked>
+                            <label class="form-check-label" for="requires_balance">Requiere Saldo</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="requires_attachment" name="requires_attachment">
+                            <label class="form-check-label" for="requires_attachment">Adjunto Oblig.</label>
+                        </div>
+                    </div>
+                    <div class="col-md-2">
+                        <button type="submit" class="btn btn-primary w-100">Añadir</button>
+                    </div>
+                </form>
+                {% endif %}
+
+                <div class="table-responsive">
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th>Nombre</th>
+                                <th>Tipo</th>
+                                <th>Días Fijos</th>
+                                <th>Requiere Saldo</th>
+                                <th>Adjunto</th>
+                                <th class="text-center">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for t in types %}
+                            <tr>
+                                <td>{{ t.name }}</td>
+                                <td>{{ 'Fijo (Corridos)' if t.consumption_type == 'Fixed' else 'Flexible (Hábiles)' }}</td>
+                                <td>{{ t.default_days if t.consumption_type == 'Fixed' else '-' }}</td>
+                                <td>{{ 'Sí' if t.requires_balance else 'No' }}</td>
+                                <td>{{ 'Sí' if t.requires_attachment else 'No' }}</td>
+                                <td class="text-center">
+                                    {% if session.base_role != 'Asistente RRHH' %}
+                                    {% if t.name == 'Vacaciones' %}
+                                        <button class="btn btn-sm btn-secondary" disabled title="El tipo Vacaciones no se puede eliminar"><i class="bi bi-lock-fill"></i></button>
+                                    {% else %}
+                                        <form action="{{ url_for('hr.hr_delete_leave_type', type_id=t.id) }}" method="POST" class="d-inline" onsubmit="return confirm('¿Estás seguro de eliminar este tipo de licencia?');">
+                                            <button type="submit" class="btn btn-sm btn-danger"><i class="bi bi-trash"></i></button>
+                                        </form>
+                                    {% endif %}
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="6" class="text-center">No hay tipos de licencia registrados.</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

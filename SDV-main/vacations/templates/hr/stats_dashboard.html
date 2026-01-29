@@ -1,0 +1,140 @@
+
+<!-- templates/hr_stats_dashboard.html (CORREGIDO) -->
+{% extends "layout.html" %}
+{% block content %}
+<a href="{{ url_for('main.dashboard') }}" class="btn btn-secondary shadow" style="position: fixed; top: 80px; right: 20px; z-index: 1050;">
+    <i class="bi bi-arrow-left"></i> Volver al Panel
+</a>
+
+<div class="container-fluid" style="margin-top: 5rem;">
+    <!-- Fila de KPIs -->
+    <div class="row g-4 mb-4">
+        <div class="col-md-4">
+            <div class="card text-white bg-primary h-100">
+                <div class="card-body text-center">
+                    <h5 class="card-title">Empleados Activos</h5>
+                    <p class="card-text fs-1 fw-bold">{{ active_employees }}</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card text-white bg-warning h-100">
+                <div class="card-body text-center">
+                    <h5 class="card-title">Solicitudes Pendientes</h5>
+                    <p class="card-text fs-1 fw-bold">{{ pending_requests }}</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card text-white bg-success h-100">
+                <div class="card-body text-center">
+                    <h5 class="card-title">Días Aprobados (Este Año)</h5>
+                    <p class="card-text fs-1 fw-bold">{{ days_approved_this_year }}</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Fila de Gráficos -->
+    <div class="row g-4">
+        <div class="col-lg-8">
+            <div class="card">
+                <div class="card-header">
+                    Solicitudes por Mes (Año Actual)
+                </div>
+                <div class="card-body">
+                    <canvas id="requestsByMonthChart"></canvas>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-4">
+            <div class="card">
+                <div class="card-header">
+                    Días por Departamento
+                </div>
+                <div class="card-body">
+                    <canvas id="daysByDeptChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<!-- Cargar Chart.js primero -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+// Ahora que Chart.js está cargado, se ejecuta el script para crear los gráficos.
+document.addEventListener('DOMContentLoaded', function () {
+    
+    // Gráfico 1: Solicitudes por Mes
+    const requestsChartEl = document.getElementById('requestsByMonthChart');
+    if (requestsChartEl) {
+        const ctx1 = requestsChartEl.getContext('2d');
+        new Chart(ctx1, {
+            type: 'bar',
+            data: {
+                labels: {{ month_labels|safe }},
+                datasets: [{
+                    label: 'Nº de Solicitudes',
+                    data: {{ requests_per_month_data|safe }},
+                    backgroundColor: 'rgba(54, 162, 235, 0.6)',
+                    borderColor: 'rgba(54, 162, 235, 1)',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            stepSize: 1
+                        }
+                    }
+                },
+                responsive: true,
+                plugins: {
+                    legend: {
+                        display: false
+                    }
+                }
+            }
+        });
+    }
+
+    // Gráfico 2: Días por Departamento
+    const deptChartEl = document.getElementById('daysByDeptChart');
+    if (deptChartEl) {
+        const ctx2 = deptChartEl.getContext('2d');
+        new Chart(ctx2, {
+            type: 'doughnut',
+            data: {
+                labels: {{ dept_labels|safe }},
+                datasets: [{
+                    label: 'Días de Vacaciones',
+                    data: {{ days_per_dept_data|safe }},
+                    backgroundColor: [
+                        'rgba(255, 99, 132, 0.7)',
+                        'rgba(54, 162, 235, 0.7)',
+                        'rgba(255, 206, 86, 0.7)',
+                        'rgba(75, 192, 192, 0.7)',
+                        'rgba(153, 102, 255, 0.7)',
+                        'rgba(255, 159, 64, 0.7)'
+                    ],
+                    hoverOffset: 4
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: {
+                        position: 'top',
+                    }
+                }
+            }
+        });
+    }
+});
+</script>
+{% endblock %}
