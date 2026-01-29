@@ -13,3 +13,6 @@ instance/
 # Archivos subidos
 uploads/
 vacations/uploads/
+
+# Archivos de respaldo
+*.bkp
